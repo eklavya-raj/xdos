@@ -458,27 +458,23 @@ tcp_in:
     ret
 
 wait_for:
-    mov dword [wcount], 0
-    mov eax, 0xFFFF
-    mov [wlast], eax
+    mov eax, [ticks]
+    mov [wcount], eax
 .l:
     call net_poll
     mov eax, [esi_flag]
-    cmp dword [eax], 0
-    je .t
-    mov eax, [ebx_flag]
-    cmp eax, -1
+    mov eax, [eax]
+    test eax, eax
+    jz .t
+    mov ecx, [ebx_flag]
+    cmp ecx, -1
     je .ok
-    mov ecx, [esi_flag]
-    cmp [ecx], eax
+    cmp eax, ecx
     jae .ok
 .t:
-    call pit_read
-    cmp eax, [wlast]
-    mov [wlast], eax
-    jbe .l
-    inc dword [wcount]
-    cmp dword [wcount], 200
+    mov eax, [ticks]
+    sub eax, [wcount]
+    cmp eax, 1300
     jb .l
     xor eax, eax
     ret
@@ -623,7 +619,6 @@ pagelen  dd 0
 sndnxt   dd 0x1000
 rcvnxt   dd 0
 wcount   dd 0
-wlast    dd 0
 esi_flag dd 0
 ebx_flag dd 0
 sport    dw 0

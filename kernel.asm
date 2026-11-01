@@ -2,29 +2,24 @@
 bits 32
 org KERNEL
 
+    ;boot sector jumps here
+    call sys_init
     fninit
     cld
-    mov al, 0x34
-    out 0x43, al
-    xor al, al
-    out 0x40, al
-    out 0x40, al
     call mouse_init
     call wallpaper
     mov edi, CANVAS
     mov ecx, CANW*CANH
     mov eax, 0xFFFFFF
     rep stosd
-    call hill_init
     call browser_init
     call term_init
-    call flap_reset
     mov dword [dirty], 1
 
 main:
     call poll
     call clock_tick
-    call ticker
+    call vm_tick
     cmp dword [dirty], 0
     jne .full
     ; only the game changed
@@ -91,16 +86,6 @@ blit:
 .x:
     ret
 
-pit_read:
-    mov al, 0
-    out 0x43, al
-    in al, 0x40
-    mov ah, al
-    in al, 0x40
-    xchg al, ah
-    movzx eax, ax
-    ret
-
 ;base + a*sin(x*f) + b*sin(x*g)
 wave:
     mov [t_x], ecx
@@ -141,32 +126,6 @@ edit_key:
     ret
 .no:
     stc
-    ret
-
-; 39773 pit counts = ~30hz
-ticker:
-    call pit_read
-    mov ebx, [lastc]
-    mov [lastc], eax
-    sub ebx, eax
-    and ebx, 0xFFFF
-    add [tacc], ebx
-    cmp dword [tacc], 39773
-    jb .x
-    sub dword [tacc], 39773
-    cmp dword [tacc], 39773
-    jb .go
-    mov dword [tacc], 0
-.go:
-    movzx eax, byte [zord+NWIN-1]
-    imul ebx, eax, WSIZE
-    cmp dword [wins+ebx+WVIS], 0
-    je .x
-    cmp eax, A_FLAP
-    je flap_tick
-    cmp eax, A_HILL
-    je hill_tick
-.x:
     ret
 
 kwait:
@@ -454,6 +413,7 @@ shutdown:
 key:
     cmp al, 0xE0                            ;ignore e0 prefix
     je .out
+    mov [lastscan], al                  ;games read this
     movzx ebx, al
     and ebx, 0x7F
     mov ecx, 1
@@ -1363,7 +1323,7 @@ scene:
 
 %include "fs.inc"
 %include "apps.inc"
-%include "games.inc"
+%include "vm.inc"
 %include "net.inc"
 %include "browser.inc"
 
@@ -1417,15 +1377,15 @@ wins:
     dd 300, 170, 452, 340, 0, s_note, 0
     dd 120, 150, 372, 420, 0, s_files, 0
     dd 660, 100, 248, 330, 0, s_calc, 0
-    dd 360, 80, 332, 396, 0, s_flap, 0
-    dd 280, 180, 492, 336, 0, s_hill, 0
+    dd 200, 70, 652, 436, 0, s_flap, 0
+    dd 240, 110, 652, 436, 0, s_hill, 0
     dd 420, 90, 434, 346, 0, s_paint, 0
     dd 140, 40, 740, 560, 0, s_browse, 0
 
 titles  dd s_sys, s_term, s_note, s_files, s_calc, s_flap, s_hill, s_paint, s_browse, s_off
-appdraw dd draw_sys, draw_term, draw_note, draw_files, draw_calc, draw_flap, draw_hill, draw_paint, draw_browser
-appclick dd nop_app, nop_app, click_note, click_files, click_calc, click_flap, nop_app, nop_app, click_browser
-appkey  dd nop_app, key_term, key_note, nop_app, nop_app, key_flap, nop_app, nop_app, key_browser
+appdraw dd draw_sys, draw_term, draw_note, draw_files, draw_calc, draw_vm, draw_vm, draw_paint, draw_browser
+appclick dd nop_app, nop_app, click_note, click_files, click_calc, click_vm, click_vm, nop_app, click_browser
+appkey  dd nop_app, key_term, key_note, nop_app, nop_app, key_vm, key_vm, nop_app, key_browser
 
 ; y, f, a, f, a, color
 ridges:
@@ -1444,8 +1404,8 @@ s_term  db 'Terminal', 0
 s_note  db 'Notepad', 0
 s_files db 'Files', 0
 s_calc  db 'Calculator', 0
-s_flap  db 'Flap', 0
-s_hill  db 'Hill Ride', 0
+s_flap  db 'flappy.img', 0
+s_hill  db 'hill1k.img', 0
 s_paint db 'Paint', 0
 s_browse db 'Browser', 0
 s_off   db 'Shut down', 0

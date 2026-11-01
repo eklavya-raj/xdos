@@ -39,21 +39,28 @@ dw 0xAA55
 
 ;stage 2, still 16 bit
 stage2:
-    mov ax, 0x1130
+  ;mode 13h,grab its palette for the games
+    mov ax, 0x13
+    int 0x10
+    mov ax, 0x1017
+    xor bx, bx
+    mov cx, 256
+    mov dx, 0x6800
+    int 0x10
     ; 8x16 font -> 0x80000
     mov bh, 6
-    int 0x10
-    push es
-    pop ds
-    mov si, bp
-    mov ax, 0x8000
-    mov es, ax
     xor di, di
     mov cx, 2048
-    rep movsw
-    xor ax, ax
-    mov ds, ax
-    mov es, ax
+    call bfont
+    ; 8x8 font (games)
+    mov bh, 3
+    mov di, 0x1000
+    mov cx, 512
+    call bfont
+    mov bh, 4
+    mov di, 0x1400
+    mov cx, 512
+    call bfont
 
     ; find 1024x768x32 w/ lfb
     mov dword [0x6000], 'VBE2'
@@ -103,6 +110,25 @@ stage2:
 .fail:
     hlt
     jmp .fail
+
+; bh = font, cx = words
+bfont:
+    push cx
+    push di
+    mov ax, 0x1130
+    int 0x10
+    pop di
+    pop cx
+    push es
+    pop ds
+    mov si, bp
+    mov ax, 0x8000
+    mov es, ax
+    rep movsw
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    ret
 
 gdt:
     dq 0
