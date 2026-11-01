@@ -1,158 +1,7 @@
-bits 16
-org 0x7C00
-
-WIDTH   equ 1024
-HEIGHT  equ 768
-BACK    equ 0x1000000	;back buffer
-WALL    equ 0x1400000               ;wallpaper
-HILLT   equ 0x2000000
-NOTE    equ 0x2100000
-TBUF    equ 0x2110000
-FONT    equ 0x80000                     ; bios font
-FSMEM   equ 0x7C00+96*512
-FSLBA   equ 96
-FSMAX   equ 15
-BARY    equ 728
-NWIN    equ 9
-WSIZE   equ 28
-WX      equ 0
-WY      equ 4
-WW      equ 8
-WH      equ 12
-WVIS    equ 16
-WTITLE  equ 20
-MENUW   equ 240
-MENUH   equ 56+(NWIN+1)*36
-MENUY   equ BARY-MENUH
-A_TERM  equ 1
-A_NOTE  equ 2
-A_FLAP  equ 5
-A_HILL  equ 6
-A_PAINT equ 7
-A_BROWSE equ 8
-CANVAS  equ 0x1800000
-CANW    equ 420
-CANH    equ 280
-
-; bios loads us at 7c00
-start:
-    cli
-    xor ax, ax
-    mov ds, ax
-    mov es, ax
-    mov ss, ax
-    mov sp, 0x7C00
-    sti
-    mov [drive], dl
-    mov si, dap1
-    mov ah, 0x42 ; read the rest
-    int 0x13
-    mov si, dap2
-    mov ah, 0x42
-    mov dl, [drive]
-    int 0x13
-    jmp stage2
-
-drive db 0
-; dap: size, count, buf, lba
-dap1:
-    db 16, 0
-    dw 64
-    dw 0, 0x07E0
-    dq 1
-dap2:
-    db 16, 0
-    dw 63
-    dw 0, 0x0FE0
-    dq 65
-
-times 510-($-$$) db 0
-dw 0xAA55
-
-;stage 2, still 16 bit
-stage2:
-    mov ax, 0x1130
-    ; 8x16 font -> 0x80000
-    mov bh, 6
-    int 0x10
-    push es
-    pop ds
-    mov si, bp
-    mov ax, 0x8000
-    mov es, ax
-    xor di, di
-    mov cx, 2048
-    rep movsw
-    xor ax, ax
-    mov ds, ax
-    mov es, ax
-
-    ; find 1024x768x32 w/ lfb
-    mov dword [0x6000], 'VBE2'
-    mov ax, 0x4F00
-    mov di, 0x6000
-    int 0x10
-    mov si, [0x600E]
-    mov ax, [0x6010]
-    mov fs, ax
-.mode:
-    mov cx, [fs:si]
-    add si, 2
-    cmp cx, 0xFFFF
-    je .fail
-    push si
-    mov ax, 0x4F01
-    mov di, 0x6200
-    int 0x10
-    pop si
-    cmp word [0x6200+18], WIDTH
-    jne .mode
-    cmp word [0x6200+20], HEIGHT
-    jne .mode
-    cmp byte [0x6200+25], 32
-    jne .mode
-    test word [0x6200], 0x80
-    jz .mode
-    mov eax, [0x6200+40]
-    mov [lfb], eax
-    movzx eax, word [0x6200+16]
-    mov [pitch], eax
-    mov bx, cx
-    or bx, 0x4000
-    mov ax, 0x4F02
-    int 0x10
-
-    ; a20, gdt, pmode
-    in al, 0x92
-    or al, 2
-    out 0x92, al
-    cli
-    lgdt [gdtr]
-    mov eax, cr0
-    or eax, 1
-    mov cr0, eax
-    jmp dword 0x08:pm
-.fail:
-    hlt
-    jmp .fail
-
-gdt:
-    dq 0
-    dq 0x00CF9A000000FFFF
-    dq 0x00CF92000000FFFF
-gdtr:
-    dw 23
-    dd gdt
-
+%include "defs.inc"
 bits 32
-pm:
-    mov ax, 0x10
-    mov ds, ax
-    mov es, ax
-    mov ss, ax
-    mov fs, ax
-    mov gs, ax
-    mov esp, 0x7C00
+org KERNEL
+
     fninit
     cld
     mov al, 0x34
@@ -200,39 +49,25 @@ fastframe:
     mov eax, [esi+WX]
     add eax, 6
     mov [cx0], eax
-    mov eax, [esi+WY]
-    add eax, 30
-    mov [cy0], eax
-    call [appdraw+ebp*4]
-    call cursor
-    imul eax, ebp, WSIZE
-    lea esi, [wins+eax]
-    mov eax, [cx0]
-    mov ebx, [cy0]
+    mov ebx, [esi+WY]
+    add ebx, 30
+    mov [cy0], ebx
     mov ecx, [esi+WW]
     sub ecx, 12
     mov edx, [esi+WH]
     sub edx, 36
-    cmp eax, 0
-    jge .a
-    add ecx, eax
-    xor eax, eax
-.a:
-    lea edi, [eax+ecx]
-    cmp edi, WIDTH
-    jle .b
-    mov ecx, WIDTH
-    sub ecx, eax
-.b:
+    pushad
+    call [appdraw+ebp*4]
+    call cursor
+    popad
     lea edi, [ebx+edx]
     cmp edi, BARY
-    jle .c
+    jle blit
     mov edx, BARY
     sub edx, ebx
-.c:
-    cmp ecx, 0
-    jle .x
-    cmp edx, 0
+
+blit:
+    call clip
     jle .x
     imul esi, ebx, WIDTH
     add esi, eax
@@ -256,8 +91,7 @@ fastframe:
 .x:
     ret
 
-; 39773 pit counts = ~30hz
-ticker:
+pit_read:
     mov al, 0
     out 0x43, al
     in al, 0x40
@@ -265,6 +99,53 @@ ticker:
     in al, 0x40
     xchg al, ah
     movzx eax, ax
+    ret
+
+;base + a*sin(x*f) + b*sin(x*g)
+wave:
+    mov [t_x], ecx
+    fild dword [t_x]
+    fmul dword [esi+4]
+    fsin
+    fmul dword [esi+8]
+    fild dword [t_x]
+    fmul dword [esi+12]
+    fsin
+    fmul dword [esi+16]
+    faddp
+    fiadd dword [esi]
+    fistp dword [t_y]
+    mov eax, [t_y]
+    ret
+
+; al=key edi=buf ebx=len ecx=max, cf=nothing changed
+edit_key:
+    test al, al
+    jz .no
+    mov edx, [ebx]
+    cmp al, 8
+    jne .add
+    test edx, edx
+    jz .no
+    dec edx
+    jmp .st
+.add:
+    cmp edx, ecx
+    jae .no
+    mov [edi+edx], al
+    inc edx
+.st:
+    mov [ebx], edx
+    mov byte [edi+edx], 0
+    clc
+    ret
+.no:
+    stc
+    ret
+
+; 39773 pit counts = ~30hz
+ticker:
+    call pit_read
     mov ebx, [lastc]
     mov [lastc], eax
     sub ebx, eax
@@ -711,7 +592,12 @@ strcmp:
     push edi
 .l:
     mov al, [esi]
-    cmp al, [edi]
+    mov ah, [edi]
+    test al, al
+    jz .e
+    or ax, 0x2020
+.e:
+    cmp al, ah
     jne .x
     test al, al
     jz .x
@@ -755,8 +641,8 @@ lerp:
     pop ebx
     ret
 
-rect:
-    pushad
+; le=nothing to draw
+clip:
     cmp eax, 0
     jge .a
     add ecx, eax
@@ -779,13 +665,19 @@ rect:
     mov edx, HEIGHT
     sub edx, ebx
 .d:
-    cmp ecx, 0
-    jle .x
-    cmp edx, 0
-    jle .x
     imul edi, ebx, WIDTH
     add edi, eax
     lea edi, [BACK+edi*4]
+    cmp ecx, 0
+    jle .x
+    cmp edx, 0
+.x:
+    ret
+
+rect:
+    pushad
+    call clip
+    jle .x
     mov eax, esi
 .y:
     push ecx
@@ -803,30 +695,8 @@ rect:
 ; 3/4
 shade:
     pushad
-    cmp eax, 0
-    jge .a
-    add ecx, eax
-    xor eax, eax
-.a:
-    lea edi, [eax+ecx]
-    cmp edi, WIDTH
-    jle .c
-    mov ecx, WIDTH
-    sub ecx, eax
-.c:
-    lea edi, [ebx+edx]
-    cmp edi, HEIGHT
-    jle .d
-    mov edx, HEIGHT
-    sub edx, ebx
-.d:
-    cmp ecx, 0
+    call clip
     jle .x
-    cmp edx, 0
-    jle .x
-    imul edi, ebx, WIDTH
-    add edi, eax
-    lea edi, [BACK+edi*4]
 .y:
     push ecx
     push edi
@@ -899,9 +769,7 @@ grad:
 rbox:
     push edi
     mov edi, esi
-    mov dword [g_round], 2
-    call grad
-    mov dword [g_round], 0
+    call rgrad
     pop edi
     ret
 
@@ -1197,19 +1065,8 @@ wallpaper:
 .layer:
     xor ecx, ecx
 .col:
-    mov [t_x], ecx
-    fild dword [t_x]
-    fmul dword [esi+4]
-    fsin
-    fmul dword [esi+8]
-    fild dword [t_x]
-    fmul dword [esi+12]
-    fsin
-    fmul dword [esi+16]
-    faddp
-    fiadd dword [esi]
-    fistp dword [t_y]
-    mov ebx, [t_y]
+    call wave
+    mov ebx, eax
     imul edi, ebx, WIDTH
     add edi, ecx
     lea edi, [WALL+edi*4]
@@ -1498,21 +1355,11 @@ scene:
     call taskbar
     call startmenu
     call cursor
-    mov esi, BACK
-    mov edi, [lfb]
-    mov edx, HEIGHT
-.b:
-    push esi
-    push edi
+    xor eax, eax
+    xor ebx, ebx
     mov ecx, WIDTH
-    rep movsd
-    pop edi
-    pop esi
-    add esi, WIDTH*4
-    add edi, [pitch]
-    dec edx
-    jnz .b
-    ret
+    mov edx, HEIGHT
+    jmp blit
 
 %include "fs.inc"
 %include "apps.inc"
@@ -1520,8 +1367,6 @@ scene:
 %include "net.inc"
 %include "browser.inc"
 
-lfb     dd 0
-pitch   dd 0
 mx      dd 512
 my      dd 384
 btn     dd 0
@@ -1636,20 +1481,3 @@ arrow:
 
 %include "assets.inc"
 
-code_end:
-times FSLBA*512-($-$$) db 0
-
-; name 24, size, used
-fsdir:
-    db 'readme.txt'
-    times 24-10 db 0
-    dd fsreadme_end-fsreadme
-    dd 1
-    times 512-($-fsdir) db 0
-fsreadme:
-    db 'Welcome to XD OS.', 10, 10
-    db 'The system and every file you save live in', 10
-    db 'one 65,536 byte image.', 10
-fsreadme_end:
-
-times 65536-($-$$) db 0
