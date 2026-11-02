@@ -5,6 +5,7 @@ PT      equ 0x2702000
 IDT     equ 0x2703000
 BASEPAL equ 0x2704000
 VPAL    equ 0x2704400               ; game palette
+FW      equ 0x2704800                   ;glyph offset/width
 KSTACK  equ 0x27E0000
 VSTACK  equ 0x27F0000
 VMBASE  equ 0x2800000 ;  game's 1mb
@@ -241,7 +242,7 @@ vm_load:
     rep movsd
     mov eax, [ticks]
     mov [vm_done], eax
-    mov dword [vm_key], 0
+    and dword [vm_key], 0
     ret
 
 ; only runs while on top
@@ -371,7 +372,7 @@ vm_out:
     jne .d
     movzx eax, al
     mov [v_pidx], eax
-    mov dword [v_psub], 0
+    and dword [v_psub], 0
     ret
 .d:
     cmp dx, 0x3C9
@@ -385,7 +386,7 @@ vm_out:
     inc dword [v_psub]
     cmp dword [v_psub], 3
     jb .x
-    mov dword [v_psub], 0
+    and dword [v_psub], 0
     inc byte [v_pidx]
 .x:
     ret
@@ -408,7 +409,7 @@ vm_int16:
     stc
     ret
 .got:
-    mov dword [vm_key], 0
+    and dword [vm_key], 0
     clc
     ret
 

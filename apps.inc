@@ -47,8 +47,8 @@ term_init:
     mov ecx, TROWS*TCOLS
     xor al, al
     rep stosb
-    mov dword [tcol], 0
-    mov dword [trow], 0
+    and dword [tcol], 0
+    and dword [trow], 0
     mov esi, s_tbanner
     call tputs
     jmp prompt
@@ -70,7 +70,7 @@ tputc:
     cmp dword [tcol], TCOLS
     jb .x
 .nl:
-    mov dword [tcol], 0
+    and dword [tcol], 0
     inc dword [trow]
     cmp dword [trow], TROWS
     jb .x
@@ -171,7 +171,7 @@ key_term:
 .run:
     call tputc
     call exec
-    mov dword [tlen], 0
+    and dword [tlen], 0
     mov byte [tline], 0
     jmp prompt
 
@@ -235,8 +235,8 @@ c_clear:
     mov ecx, TROWS*TCOLS
     xor al, al
     rep stosb
-    mov dword [tcol], 0
-    mov dword [trow], 0
+    and dword [tcol], 0
+    and dword [trow], 0
     ret
 
 c_time:
@@ -299,7 +299,7 @@ c_rm:
     call fs_delete
     cmp eax, [notefile]
     jne .x
-    mov dword [notefile], -1
+    or dword [notefile], -1
 .x:
     ret
 
@@ -365,21 +365,20 @@ s_c9    db 'time', 0
 s_c10   db 'run', 0
 s_c11   db 'shutdown', 0
 s_prompt db 'xd> ', 0
-s_tbanner db 'XD OS terminal. Type help.', 10, 0
-s_help  db 'ls  cat <file>  write <file> <text>  rm <file>  echo <text>', 10
-        db 'run <app>  time  ver  clear  shutdown', 10, 0
-s_bad   db 'Unknown command. Type help.', 10, 0
-s_ver   db 'XD OS, stage 2. Code and art: ', 0
-s_verb  db ' of 65536 bytes', 10, 0
+s_tbanner db 'Type help', 10, 0
+s_help  db 'ls cat write rm echo run time ver clear shutdown', 10, 0
+s_bad   db 'Unknown', 10, 0
+s_ver   db 'XD OS ', 0
+s_verb  db ' of 16384', 10, 0
 s_bytes db ' bytes', 10, 0
-s_nofile db 'File not found.', 10, 0
-s_noapp db 'No such app.', 10, 0
-s_saved db 'Saved.', 10, 0
-s_full  db 'Disk full.', 10, 0
-s_i1    db 'Hand-written x86 assembly', 0
-s_i2    db '1024 x 768, 32-bit colour', 0
-s_i3    db 'Saves files inside its own image', 0
-s_i4    db 'Code and art:', 0
+s_nofile db 'No file', 10, 0
+s_noapp db 'No app', 10, 0
+s_saved db 'Saved', 10, 0
+s_full  db 'Full', 10, 0
+s_i1    db 'x86 assembly', 0
+s_i2    db '1024 x 768', 0
+s_i3    db 'Files live in this image', 0
+s_i4    db 'System bytes:', 0
 
 tcol    dd 0
 trow    dd 0
@@ -466,8 +465,8 @@ click_note:
     jb note_save
     cmp ecx, 120
     jae .x
-    mov dword [notelen], 0
-    mov dword [notefile], -1
+    and dword [notelen], 0
+    or dword [notefile], -1
 .x:
     ret
 
@@ -589,7 +588,7 @@ click_files:
     call fs_delete
     cmp eax, [notefile]
     jne .x
-    mov dword [notefile], -1
+    or dword [notefile], -1
     ret
 
 draw_calc:
@@ -669,8 +668,8 @@ click_calc:
     sub eax, '0'
     cmp dword [c_fresh], 0
     je .digit
-    mov dword [c_cur], 0
-    mov dword [c_fresh], 0
+    and dword [c_cur], 0
+    and dword [c_fresh], 0
 .digit:
     imul ecx, [c_cur], 10
     add ecx, eax

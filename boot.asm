@@ -11,28 +11,17 @@ start:
     mov ss, ax
     mov sp, 0x7C00
     sti
-    mov [drive], dl
     mov si, dap1
     mov ah, 0x42 ; read the rest
     int 0x13
-    mov si, dap2
-    mov ah, 0x42
-    mov dl, [drive]
-    int 0x13
     jmp stage2
 
-drive db 0
 ; dap: size, count, buf, lba
 dap1:
     db 16, 0
-    dw 64
+    dw IMGSEC-1
     dw 0, 0x07E0
     dq 1
-dap2:
-    db 16, 0
-    dw 63
-    dw 0, 0x0FE0
-    dq 65
 
 times 510-($-$$) db 0
 dw 0xAA55
@@ -149,40 +138,157 @@ pm:
     mov esp, 0x7C00
     cld
     mov dword [packed], payload_end-$$
+    ;all probs start at 1/2
+    mov edi, PROBS
+    mov ecx, 640+2048
+    mov ax, 2048
+    rep stosw
     mov esi, payload
     lodsd
     mov edi, KERNEL
-    lea ebp, [edi+eax]
-.flags:
+    lea eax, [edi+eax]
+    mov [u_end], eax
+    mov byte [edi-1], 0
+    or ebp, -1
     lodsb
-    ; lz: flag byte then 8 items
-    mov dl, al
-    mov dh, 8
-.bit:
-    cmp edi, ebp
-    jae KERNEL
-    shr dl, 1
-    jnc .copy
-    movsb
+    lodsd
+    bswap eax
+    xchg ebx, eax
+.next:
+    cmp edi, [u_end]
+    jae .undo
+    ;lit or match
+    mov eax, [u_was]
+    call getbit
+    jnz .match
+    ; literal
+    movzx edx, byte [edi-1]
+    shr edx, 5
+    shl edx, 8
+    add edx, 640
+    mov ecx, 1
+.lit:
+    lea eax, [edx+ecx]
+    call getbit
+    adc ecx, ecx
+    cmp ecx, 256
+    jb .lit
+    xchg eax, ecx
+    stosb
+    and dword [u_was], 0
     jmp .next
-.copy:
-    lodsw
-    ;  len low 5 bits +3, offset +1
-    movzx ecx, ax
-    and ecx, 31
-    add ecx, 3
-    movzx eax, ax
-    shr eax, 5
-    inc eax
+.match:
+    mov dword [u_was], 1
+    ; rep match?
+    mov al, 2
+    call getbit
+    jnz .rep
+    mov edx, 320
+    call gamma
+    mov [u_off], ecx
+.rep:
+    mov edx, 8
+    call gamma
+    inc ecx
     push esi
     mov esi, edi
-    sub esi, eax
+    sub esi, [u_off]
     rep movsb
     pop esi
-.next:
-    dec dh
-    jnz .bit
-    jmp .flags
+    jmp .next
+
+.undo:
+    ; undo e8 filter
+    mov esi, KERNEL
+.f:
+    mov eax, [u_end]
+    sub eax, 4
+    cmp esi, eax
+    jae KERNEL
+    lodsb
+    cmp al, 0xE8
+    jne .f
+    lea eax, [esi+4-KERNEL]
+    sub [esi], eax
+    add esi, 4
+    jmp .f
+
+;elias gamma
+gamma:
+    xor ecx, ecx
+.u:
+    lea eax, [edx+ecx]
+    call getbit
+    jz .m
+    inc ecx
+    jmp .u
+.m:
+    mov eax, ecx
+    shl eax, 4
+    lea edx, [edx+eax+32]
+    add edx, ecx
+    mov eax, 1
+    jecxz .x
+.b:
+    push eax
+    lea eax, [edx-1]
+    dec edx
+    call getbit
+    pop eax
+    adc eax, eax
+    loop .b
+.x:
+    xchg ecx, eax
+    ret
+
+getbit:
+    push ecx
+    push edx
+    lea ecx, [PROBS+eax*2]
+    movzx edx, word [ecx]
+    mov eax, ebp
+    shr eax, 12
+    imul eax, edx
+    cmp ebx, eax
+    jae .one
+    mov ebp, eax
+    mov eax, 4096
+    sub eax, edx
+    shr eax, 4
+    add [ecx], ax
+    xor edx, edx
+    jmp .n
+.one:
+    sub ebx, eax
+    sub ebp, eax
+    shr edx, 4
+    sub [ecx], dx
+    mov edx, 1
+.n:
+    cmp ebp, 1<<24
+    jae .x
+    shl ebp, 8
+    shl ebx, 8
+    lodsb
+    mov bl, al
+.x:
+    mov eax, edx
+    pop edx
+    pop ecx
+    shr eax, 1
+    sbb eax, eax
+    neg eax
+    test eax, eax
+    jz .z
+    stc
+    ret
+.z:
+    clc
+    ret
+
+u_end dd 0
+u_was dd 0
+u_off dd 0
 
 payload:
     incbin "kernel.lz"
@@ -199,7 +305,7 @@ fsdir:
 fsreadme:
     db 'Welcome to XD OS.', 10, 10
     db 'The system and every file you save live in', 10
-    db 'one 65,536 byte image.', 10
+    db 'one 16,384 byte image.', 10
 fsreadme_end:
 
-times 65536-($-$$) db 0
+times IMGSEC*512-($-$$) db 0

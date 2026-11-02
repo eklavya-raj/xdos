@@ -261,7 +261,7 @@ tcp_send:
     mov byte [edi+12], 0x50
     mov [edi+13], bl
     mov word [edi+14], 0x0040
-    mov dword [edi+16], 0
+    and dword [edi+16], 0
     ;pseudo header, ip_hdr overwrites it after
     mov esi, TXBUF+22
     mov eax, [ourip]
@@ -493,20 +493,20 @@ net_get:
     jne .gw
     call arp_send
     mov dword [esi_flag], haveg
-    mov dword [ebx_flag], -1
+    or dword [ebx_flag], -1
     call wait_for
     test eax, eax
     jnz .gw
     mov eax, e_arp
     ret
 .gw:
-    mov dword [haveip], 0
+    and dword [haveip], 0
     mov edi, TXBUF+42
     ; dns query
     mov word [edi], 0x3412
     mov word [edi+2], 0x0001
     mov dword [edi+4], 0x00000100
-    mov dword [edi+8], 0
+    and dword [edi+8], 0
     add edi, 12
     mov esi, b_host
 .lab:
@@ -549,7 +549,7 @@ net_get:
     pop ecx
     call nic_send
     mov dword [esi_flag], haveip
-    mov dword [ebx_flag], -1
+    or dword [ebx_flag], -1
     call wait_for
     test eax, eax
     jnz .dns
@@ -562,7 +562,7 @@ net_get:
     xchg al, ah
     mov [sport], ax
     add dword [sndnxt], 0x10000
-    mov dword [pagelen], 0
+    and dword [pagelen], 0
     mov dword [tstate], 1
     mov bl, 2
     xor ecx, ecx
@@ -632,9 +632,9 @@ dnsip    db 10, 0, 2, 3
 dstip    dd 0
 r_get    db 'GET ', 0
 r_host   db ' HTTP/1.0', 13, 10, 'Host: ', 0
-r_end    db 13, 10, 'User-Agent: XD-OS/1.0', 13, 10, 'Connection: close', 13, 10, 13, 10, 0
-e_nonic  db 'No network card found', 0
-e_arp    db 'Network did not answer', 0
-e_dns    db 'Could not find that site', 0
-e_tcp    db 'Site did not answer', 0
+r_end    db 13, 10, 13, 10, 0
+e_nonic  db 'No network', 0
+e_arp    equ e_nonic
+e_dns    db 'Site not found', 0
+e_tcp    equ e_dns
 reqbuf   times 320 db 0

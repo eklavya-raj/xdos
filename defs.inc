@@ -6,9 +6,10 @@ HILLT   equ 0x2000000
 NOTE    equ 0x2100000
 TBUF    equ 0x2110000
 FONT    equ 0x80000                     ; bios font
-FSMEM   equ 0x7C00+96*512
-FSLBA   equ 96
-FSMAX   equ 15
+FSMAX   equ 4
+IMGSEC  equ 32
+FSLBA   equ IMGSEC-1-2*FSMAX  ;dir sector
+FSMEM   equ 0x7C00+FSLBA*512 ; bios already loaded it
 BARY    equ 728
 NWIN    equ 9
 WSIZE   equ 28
@@ -30,7 +31,8 @@ A_BROWSE equ 8
 CANVAS  equ 0x1800000
 CANW    equ 420
 CANH    equ 280
-KERNEL  equ 0x100000
+KERNEL  equ 0x100010	; unpacked kernel
+PROBS   equ 0x2000000
 ; filled in by the boot sector
 lfb     equ 0x5000
 pitch   equ 0x5004

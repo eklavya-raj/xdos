@@ -130,7 +130,7 @@ fs_create:
 .z:
     mov eax, ebx
     call fs_entry
-    mov dword [eax+24], 0
+    and dword [eax+24], 0
     mov dword [eax+28], 1
     mov eax, ebx
 .x:
@@ -143,7 +143,7 @@ fs_create:
 fs_delete:
     push eax
     call fs_entry
-    mov dword [eax+28], 0
+    and dword [eax+28], 0
     call fs_savedir
     pop eax
     ret

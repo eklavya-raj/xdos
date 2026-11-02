@@ -50,8 +50,8 @@ parse_url:
 
 ; follows 3 redirects max
 browser_go:
-    mov dword [b_go], 0
-    mov dword [b_redir], 0
+    and dword [b_go], 0
+    and dword [b_redir], 0
 .again:
     call parse_url
     test eax, eax
@@ -144,8 +144,8 @@ find_location:
 newline:
     cmp dword [l_x], 0
     je .x
-    mov dword [l_x], 0
-    add dword [l_y], 22
+    and dword [l_x], 0
+    add dword [l_y], 18
 .x:
     ret
 
@@ -218,13 +218,13 @@ tagis:
 
 ; no css, no images
 layout:
-    mov dword [l_x], 0
-    mov dword [l_y], 0
-    mov dword [l_n], 0
-    mov dword [l_link], -1
-    mov dword [l_head], 0
-    mov dword [l_nl], 0
-    mov dword [b_scroll], 0
+    and dword [l_x], 0
+    and dword [l_y], 0
+    and dword [l_n], 0
+    or dword [l_link], -1
+    and dword [l_head], 0
+    and dword [l_nl], 0
+    and dword [b_scroll], 0
     mov dword [l_ws], WTEXT
     mov dword [l_wp], WTEXT
 .c:
@@ -503,7 +503,7 @@ start_load:
     dec ecx
     mov [b_len], ecx
     mov dword [b_status], s_load
-    mov dword [l_nlink], 0
+    and dword [l_nlink], 0
     mov dword [b_go], 1
     mov dword [dirty], 1
     ret
@@ -727,7 +727,7 @@ browser_init:
     xor al, al
     stosb
     mov esi, PAGE
-    mov dword [l_nlink], 0
+    and dword [l_nlink], 0
     call layout
     ret
 
@@ -762,9 +762,7 @@ s_ready  db 'Ready', 0
 s_load   db 'Loading...', 0
 s_done   db 'Done', 0
 s_back   db '<', 0
-e_tls    db 'This site needs HTTPS', 0
-b_home   db '<h1>XD Browser</h1><p>A web browser in a few kilobytes of assembly.</p>'
-         db '<p>Type a site and press Enter. Up and Down scroll.</p>'
-         db '<p><a href="http://info.cern.ch/">The first website</a></p>'
-         db '<p><a href="http://example.com/">example.com</a></p>'
-         db '<p><a href="http://neverssl.com/">neverssl.com</a></p>', 0
+e_tls    db 'Needs HTTPS', 0
+b_home   db '<h1>XD Browser</h1><p><a href="http://info.cern.ch/">First website</a>'
+         db '<p><a href="http://example.com/">example.com</a>'
+         db '<p><a href="http://neverssl.com/">neverssl.com</a>', 0
