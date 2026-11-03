@@ -11,8 +11,6 @@ VSTACK  equ 0x27F0000
 VMBASE  equ 0x2800000 ;  game's 1mb
 VGA     equ VMBASE+0xA0000
 FONT8   equ FONT+0x1000
-VMW     equ 640
-VMH     equ 400
 V_ESI   equ 4
 V_EBX   equ 16
 V_EDX   equ 20
@@ -254,8 +252,8 @@ vm_tick:
     jne .x
 .ok:
     imul ebx, eax, WSIZE
-    cmp dword [wins+ebx+WVIS], 0
-    je .x
+    cmp dword [wins+ebx+WVIS], 1
+    jne .x
     cmp eax, [vm_app]
     je .run
     call vm_load
@@ -482,41 +480,82 @@ click_vm:
     mov dword [vm_key], 1
     ret
 
+; integer scale 320x200 into the window
 draw_vm:
     pushad
+    mov edi, [cur]
+    mov ecx, [edi+WW]
+    sub ecx, 12
+    mov edx, [edi+WH]
+    sub edx, 36
+    mov [v_cw], ecx
+    mov [v_ch], edx
     mov eax, [cx0]
     mov ebx, [cy0]
-    mov ecx, VMW
-    mov edx, VMH
+    xor esi, esi
+    call rect
+    xchg eax, ecx
+    xor edx, edx
+    mov ebx, 320
+    div ebx
+    xchg ecx, eax
+    mov eax, [v_ch]
+    xor edx, edx
+    mov ebx, 200
+    div ebx
+    cmp eax, ecx
+    jbe .m
+    mov eax, ecx
+.m:
+    xchg ebp, eax
+    mov eax, 0x10000
+    xor edx, edx
+    div ebp
+    inc eax
+    mov [v_inv], eax
+    imul ecx, ebp, 320
+    imul edx, ebp, 200
+    mov eax, [v_cw]
+    sub eax, ecx
+    shr eax, 1
+    add eax, [cx0]
+    mov ebx, [v_ch]
+    sub ebx, edx
+    shr ebx, 1
+    add ebx, [cy0]
+    mov [v_cw], eax
+    mov [v_ch], ebx
     call clip
     jle .x
     mov esi, eax
-    sub esi, [cx0]
+    sub esi, [v_cw]
+    imul esi, [v_inv]
     mov ebp, ebx
-    sub ebp, [cy0]
+    sub ebp, [v_ch]
+    imul ebp, [v_inv]
 .row:
     push ecx
     push esi
     push edi
     mov eax, ebp
-    shr eax, 1
+    shr eax, 16
     imul eax, 320
     add eax, VGA
 .px:
     mov ebx, esi
-    shr ebx, 1
+    shr ebx, 16
     movzx ebx, byte [eax+ebx]
     mov ebx, [VPAL+ebx*4]
     mov [edi], ebx
     add edi, 4
-    inc esi
+    add esi, [v_inv]
     dec ecx
     jnz .px
     pop edi
     pop esi
     pop ecx
     add edi, WIDTH*4
-    inc ebp
+    add ebp, [v_inv]
     dec edx
     jnz .row
 .x:
@@ -524,6 +563,9 @@ draw_vm:
     ret
 
 ticks    dd 0
+v_cw     dd 0
+v_ch     dd 0
+v_inv    dd 0
 vm_app   dd -1
 vm_done  dd 0
 vm_draw  dd 0

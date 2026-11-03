@@ -2,9 +2,7 @@ WORDS   equ 0x2400000 ; x y text w link head
 WTEXT   equ 0x2500000
 LINKS   equ 0x2600000
 WSZ     equ 24
-BCW     equ 700
 BCTOP   equ 38
-BCH     equ 480
 ACOL    equ 0x1A5FD0
 HCOL    equ 0x20243A
 TCOL    equ 0x30344A
@@ -102,6 +100,7 @@ browser_go:
     add esi, 4
 .none:
     mov dword [b_status], s_done
+    mov [b_body], esi
     call layout
     mov dword [dirty], 1
     ret
@@ -167,7 +166,7 @@ flush:
     call twidth
     mov ebx, eax
     add eax, [l_x]
-    cmp eax, BCW
+    cmp eax, [b_w]
     jbe .fit
     cmp dword [l_x], 0
     je .fit
@@ -541,7 +540,7 @@ key_browser:
 scroll:
     add eax, [b_scroll]
     mov ecx, [b_doch]
-    sub ecx, BCH
+    sub ecx, [b_h]
     cmp eax, ecx
     jle .a
     mov eax, ecx
@@ -572,10 +571,12 @@ click_browser:
     stosb
     jmp start_load
 .page:
-    cmp ecx, BCW+8
+    mov eax, [b_w]
+    add eax, 8
+    cmp ecx, eax
     jb .link
     mov eax, 400
-    cmp edx, BCTOP+BCH/2
+    cmp edx, 278
     jae scroll
     mov eax, -400
     jmp scroll
@@ -645,8 +646,10 @@ draw_browser:
     mov eax, [cx0]
     mov ebx, [cy0]
     add ebx, 32
-    mov ecx, 728
-    mov edx, BCH+10
+    mov ecx, [b_w]
+    add ecx, 28
+    mov edx, [b_h]
+    add edx, 10
     mov esi, 0xFFFFFF
     call rect
     mov esi, WORDS
@@ -656,7 +659,9 @@ draw_browser:
 .w:
     mov ebx, [esi+4]
     sub ebx, [b_scroll]
-    cmp ebx, BCH-20
+    mov eax, [b_h]
+    sub eax, 20
+    cmp ebx, eax
     jae .n
     add ebx, [cy0]
     add ebx, BCTOP
@@ -699,19 +704,22 @@ draw_browser:
 .bar:
     ; scrollbar
     mov eax, [b_doch]
-    cmp eax, BCH
+    cmp eax, [b_h]
     jle .x
+    mov ecx, [b_h]
+    sub ecx, 60
     mov eax, [b_scroll]
-    imul eax, BCH-60
+    imul eax, ecx
     mov ecx, [b_doch]
-    sub ecx, BCH
+    sub ecx, [b_h]
     xor edx, edx
     div ecx
     mov ebx, eax
     add ebx, [cy0]
     add ebx, BCTOP
     mov eax, [cx0]
-    add eax, 716
+    add eax, [b_w]
+    add eax, 16
     mov ecx, 8
     mov edx, 60
     mov esi, 0xB0B6C8
@@ -719,6 +727,18 @@ draw_browser:
 .x:
     popad
     ret
+
+browser_resize:
+    mov eax, [wins+A_BROWSE*WSIZE+WW]
+    sub eax, 40
+    mov [b_w], eax
+    mov eax, [wins+A_BROWSE*WSIZE+WH]
+    sub eax, 80
+    mov [b_h], eax
+    and dword [l_nlink], 0
+    mov esi, [b_body]
+
+    jmp layout
 
 browser_init:
     mov esi, b_home
@@ -728,10 +748,12 @@ browser_init:
     stosb
     mov esi, PAGE
     and dword [l_nlink], 0
-    call layout
-    ret
+    jmp layout
 
 b_go     dd 0
+b_w      dd 700
+b_h      dd 480
+b_body   dd PAGE
 b_redir  dd 0
 b_len    dd 12
 b_doch   dd 0

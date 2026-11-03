@@ -116,8 +116,11 @@ tnum:
 draw_term:
     mov eax, [cx0]
     mov ebx, [cy0]
-    mov ecx, TCOLS*8
-    mov edx, TROWS*16
+    mov esi, [cur]
+    mov ecx, [esi+WW]
+    sub ecx, 12
+    mov edx, [esi+WH]
+    sub edx, 36
     mov esi, 0x10121E
     call rect
     xor ebp, ebp
@@ -738,8 +741,8 @@ paint_stroke:
     cmp eax, A_PAINT
     jne .out
     lea esi, [wins+A_PAINT*WSIZE]
-    cmp dword [esi+WVIS], 0
-    je .out
+    cmp dword [esi+WVIS], 1
+    jne .out
     mov ecx, [mx]
     sub ecx, [esi+WX]
     sub ecx, 6

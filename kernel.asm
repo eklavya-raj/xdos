@@ -42,6 +42,7 @@ fastframe:
     movzx ebp, byte [zord+NWIN-1]
     imul eax, ebp, WSIZE
     lea esi, [wins+eax]
+    mov [cur], esi
     mov eax, [esi+WX]
     add eax, 6
     mov [cx0], eax
@@ -317,7 +318,13 @@ press:
     cmp dword [wins+ebx+WVIS], 0
     je .bn
     dec ecx
-    js open
+    jns .bn
+    cmp al, [zord+NWIN-1]
+    jne open
+    cmp dword [wins+ebx+WVIS], 1
+    jne open
+    lea esi, [wins+ebx]
+    jmp minimize
 .bn:
     inc eax
     cmp eax, NWIN
@@ -331,8 +338,8 @@ press:
     mov ebx, eax
     imul eax, WSIZE
     lea esi, [wins+eax]
-    cmp dword [esi+WVIS], 0
-    je .next
+    cmp dword [esi+WVIS], 1
+    jne .next
     mov edx, [mx]
     sub edx, [esi+WX]
     cmp edx, [esi+WW]
@@ -348,13 +355,44 @@ press:
     mov eax, [esi+WW]
     sub eax, 30
     cmp edx, eax
-    jb .grab
+    jb .notx
     and dword [esi+WVIS], 0
     ret
-.grab:
+.notx:
+    sub eax, 22
+    cmp edx, eax
+    jae .max
+    sub eax, 22
+    cmp edx, eax
+    jae minimize
+    cmp dword [esi+WMAX], 0
+    jne .ret
     mov [drag], ebx
     mov [dragx], edx
     mov [dragy], edi
+    ret
+.max:
+    mov edi, ebx
+    shl edi, 4
+    add edi, WSAVE
+    xor dword [esi+WMAX], 1
+    jz .back
+    push esi
+    mov ecx, 4
+    rep movsd
+    pop esi
+    and dword [esi+WX], 0
+    and dword [esi+WY], 0
+    mov dword [esi+WW], WIDTH
+    mov dword [esi+WH], BARY
+    jmp .sized
+.back:
+    xchg esi, edi
+    mov ecx, 4
+    rep movsd
+.sized:
+    cmp ebx, A_BROWSE
+    je browser_resize
     ret
 .client:
     lea ecx, [edx-6]
@@ -400,6 +438,17 @@ raise:
     mov [zord+NWIN-1], al
     popad
 nop_app:
+    ret
+
+minimize:
+    mov dword [esi+WVIS], 2
+    mov al, [zord+NWIN-1]
+    mov ecx, NWIN-1
+.l:
+    mov ah, [zord+ecx-1]
+    mov [zord+ecx], ah
+    loop .l
+    mov [zord], al
     ret
 
 ; qemu acpi off
@@ -470,8 +519,8 @@ key:
 .send:
     movzx ecx, byte [zord+NWIN-1]
     imul edx, ecx, WSIZE
-    cmp dword [wins+edx+WVIS], 0
-    je .out
+    cmp dword [wins+edx+WVIS], 1
+    jne .out
     mov dword [dirty], 1
     jmp [appkey+ecx*4]
 .sh:
@@ -974,8 +1023,8 @@ window:
     mov ebp, eax
     imul eax, WSIZE
     lea esi, [wins+eax]
-    cmp dword [esi+WVIS], 0
-    je .x
+    cmp dword [esi+WVIS], 1
+    jne .x
     mov [cur], esi
     mov eax, [esi+WX]
     mov ebx, [esi+WY]
@@ -1017,20 +1066,17 @@ window:
     add ebx, 4
     mov esi, [esi+WTITLE]
     call text
-    mov esi, [cur]
-    mov eax, [esi+WX]
-    add eax, [esi+WW]
-    sub eax, 27
-    mov ebx, [esi+WY]
-    add ebx, 5
-    mov ecx, 20
-    mov edx, 18
-    mov esi, 0xE5484D
-    call rbox
-    add eax, 6
+    mov eax, 27
     mov ecx, 'x'
-    mov edx, 0xFFFFFF
-    call glyph
+    mov esi, 0xE5484D
+    call tbtn
+    mov eax, 49
+    mov ecx, 0xFE
+    mov esi, 0x5A63A8
+    call tbtn
+    mov eax, 71
+    mov cl, '_'
+    call tbtn
     mov esi, [cur]
     mov eax, [esi+WX]
     add eax, 6
@@ -1040,6 +1086,25 @@ window:
     mov [cy0], ebx
     call [appdraw+ebp*4]
 .x:
+    popad
+    ret
+
+tbtn:
+    pushad
+    mov edi, [cur]
+    neg eax
+    add eax, [edi+WX]
+    add eax, [edi+WW]
+    mov ebx, [edi+WY]
+    add ebx, 5
+    push ecx
+    mov ecx, 20
+    mov edx, 18
+    call rbox
+    add eax, 6
+    pop ecx
+    mov edx, 0xFFFFFF
+    call glyph
     popad
     ret
 

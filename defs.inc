@@ -12,6 +12,7 @@ FSLBA   equ IMGSEC-1-2*FSMAX  ;dir sector
 FSMEM   equ 0x7C00+FSLBA*512 ; bios already loaded it
 BARY    equ 728
 NWIN    equ 9
+; x y w h vis title max
 WSIZE   equ 28
 WX      equ 0
 WY      equ 4
@@ -19,6 +20,8 @@ WW      equ 8
 WH      equ 12
 WVIS    equ 16
 WTITLE  equ 20
+WMAX    equ 24
+WSAVE   equ 0x2704C00
 MENUW   equ 240
 MENUH   equ 56+(NWIN+1)*36
 MENUY   equ BARY-MENUH
