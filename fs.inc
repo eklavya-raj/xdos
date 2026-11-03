@@ -148,6 +148,48 @@ fs_delete:
     pop eax
     ret
 
+; printable only, no dupes
+fs_rename:
+    pushad
+    mov ebx, eax
+    cmp eax, FSMAX
+    jae .bad
+    cmp byte [esi], 0
+    je .bad
+    xor ecx, ecx
+.check:
+    mov al, [esi+ecx]
+    test al, al
+    jz .unique
+    sub al, '!'
+    cmp al, '~'-'!'
+    ja .bad
+    inc ecx
+    cmp ecx, 24
+    jb .check
+.bad:
+    popad
+    stc
+    ret
+.unique:
+    call fs_find
+    cmp eax, ebx
+    je .save
+    test eax, eax
+    jns .bad
+.save:
+    mov eax, ebx
+    call fs_entry
+    mov edi, eax
+    cmp dword [edi+28], 0
+    je .bad
+    call scopy
+    mov byte [edi], 0
+    call fs_savedir
+    popad
+    clc
+    ret
+
 ; max 1k
 fs_write:
     pushad

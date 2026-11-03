@@ -553,11 +553,7 @@ scroll:
     mov dword [dirty], 1
     ret
 
-click_browser:
-    cmp edx, 32
-    jae .page
-    cmp ecx, 40
-    jae .x
+browser_back:
     mov eax, [b_hist]
     test eax, eax
     jz .x
@@ -570,6 +566,15 @@ click_browser:
     xor al, al
     stosb
     jmp start_load
+.x:
+    ret
+
+click_browser:
+    cmp edx, 32
+    jae .page
+    cmp ecx, 40
+    jb browser_back
+    ret
 .page:
     mov eax, [b_w]
     add eax, 8

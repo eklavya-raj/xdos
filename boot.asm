@@ -23,83 +23,6 @@ dap1:
     dw 0, 0x07E0
     dq 1
 
-times 510-($-$$) db 0
-dw 0xAA55
-
-;stage 2, still 16 bit
-stage2:
-  ;mode 13h,grab its palette for the games
-    mov ax, 0x13
-    int 0x10
-    mov ax, 0x1017
-    xor bx, bx
-    mov cx, 256
-    mov dx, 0x6800
-    int 0x10
-    ; 8x16 font -> 0x80000
-    mov bh, 6
-    xor di, di
-    mov cx, 2048
-    call bfont
-    ; 8x8 font (games)
-    mov bh, 3
-    mov di, 0x1000
-    mov cx, 512
-    call bfont
-    mov bh, 4
-    mov di, 0x1400
-    mov cx, 512
-    call bfont
-
-    ; find 1024x768x32 w/ lfb
-    mov dword [0x6000], 'VBE2'
-    mov ax, 0x4F00
-    mov di, 0x6000
-    int 0x10
-    mov si, [0x600E]
-    mov ax, [0x6010]
-    mov fs, ax
-.mode:
-    mov cx, [fs:si]
-    add si, 2
-    cmp cx, 0xFFFF
-    je .fail
-    push si
-    mov ax, 0x4F01
-    mov di, 0x6200
-    int 0x10
-    pop si
-    cmp word [0x6200+18], WIDTH
-    jne .mode
-    cmp word [0x6200+20], HEIGHT
-    jne .mode
-    cmp byte [0x6200+25], 32
-    jne .mode
-    test word [0x6200], 0x80
-    jz .mode
-    mov eax, [0x6200+40]
-    mov [lfb], eax
-    movzx eax, word [0x6200+16]
-    mov [pitch], eax
-    mov bx, cx
-    or bx, 0x4000
-    mov ax, 0x4F02
-    int 0x10
-
-    ; a20, gdt, pmode
-    in al, 0x92
-    or al, 2
-    out 0x92, al
-    cli
-    lgdt [gdtr]
-    mov eax, cr0
-    or eax, 1
-    mov cr0, eax
-    jmp dword 0x08:pm
-.fail:
-    hlt
-    jmp .fail
-
 ; bh = font, cx = words
 bfont:
     push cx
@@ -289,6 +212,84 @@ getbit:
 u_end dd 0
 u_was dd 0
 u_off dd 0
+
+bits 16
+times 510-($-$$) db 0
+dw 0xAA55
+
+;stage 2, still 16 bit
+stage2:
+  ;mode 13h,grab its palette for the games
+    mov ax, 0x13
+    int 0x10
+    mov ax, 0x1017
+    xor bx, bx
+    mov cx, 256
+    mov dx, 0x6800
+    int 0x10
+    ; 8x16 font -> 0x80000
+    mov bh, 6
+    xor di, di
+    mov cx, 2048
+    call bfont
+    ; 8x8 font (games)
+    mov bh, 3
+    mov di, 0x1000
+    mov cx, 512
+    call bfont
+    mov bh, 4
+    mov di, 0x1400
+    mov cx, 512
+    call bfont
+
+    ; find 1024x768x32 w/ lfb
+    mov dword [0x6000], 'VBE2'
+    mov ax, 0x4F00
+    mov di, 0x6000
+    int 0x10
+    mov si, [0x600E]
+    mov ax, [0x6010]
+    mov fs, ax
+.mode:
+    mov cx, [fs:si]
+    add si, 2
+    cmp cx, 0xFFFF
+    je .fail
+    push si
+    mov ax, 0x4F01
+    mov di, 0x6200
+    int 0x10
+    pop si
+    cmp word [0x6200+18], WIDTH
+    jne .mode
+    cmp word [0x6200+20], HEIGHT
+    jne .mode
+    cmp byte [0x6200+25], 32
+    jne .mode
+    test word [0x6200], 0x80
+    jz .mode
+    mov eax, [0x6200+40]
+    mov [lfb], eax
+    movzx eax, word [0x6200+16]
+    mov [pitch], eax
+    mov bx, cx
+    or bx, 0x4000
+    mov ax, 0x4F02
+    int 0x10
+
+    ; a20, gdt, pmode
+    in al, 0x92
+    or al, 2
+    out 0x92, al
+    cli
+    lgdt [gdtr]
+    mov eax, cr0
+    or eax, 1
+    mov cr0, eax
+    jmp dword 0x08:pm
+.fail:
+    hlt
+    jmp .fail
 
 payload:
     incbin "kernel.lz"

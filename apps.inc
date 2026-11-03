@@ -306,6 +306,24 @@ c_rm:
 .x:
     ret
 
+c_mv:
+    mov esi, [targ]
+    call split
+    mov edi, esi
+    mov esi, [targ]
+    call fs_find
+    test eax, eax
+    js c_cat.no
+    mov esi, edi
+    call fs_rename
+    jnc .x
+    mov esi, s_rename_bad
+    call tputs
+    mov al, 10
+    jmp tputc
+.x:
+    ret
+
 ;write <file> <text>
 c_write:
     mov esi, [targ]
@@ -354,7 +372,7 @@ c_run:
 
 cmdtab:
     dd s_c1, c_help, s_c2, c_ls, s_c3, c_cat, s_c4, c_write, s_c5, c_rm, s_c6, c_echo
-    dd s_c7, c_clear, s_c8, c_ver, s_c9, c_time, s_c10, c_run, s_c11, shutdown, 0, 0
+    dd s_c7, c_clear, s_c8, c_ver, s_c9, c_time, s_c10, c_run, s_c11, shutdown, s_mv, c_mv, 0, 0
 
 s_c1    db 'help', 0
 s_c2    db 'ls', 0
@@ -367,9 +385,10 @@ s_c8    db 'ver', 0
 s_c9    db 'time', 0
 s_c10   db 'run', 0
 s_c11   db 'shutdown', 0
+s_mv    db 'mv', 0
 s_prompt db 'xd> ', 0
 s_tbanner db 'Type help', 10, 0
-s_help  db 'ls cat write rm echo run time ver clear shutdown', 10, 0
+s_help  db 'ls cat write mv rm echo run time ver clear shutdown', 10, 0
 s_bad   db 'Unknown', 10, 0
 s_ver   db 'XD OS ', 0
 s_verb  db ' of 16384', 10, 0
@@ -467,10 +486,13 @@ click_note:
     cmp ecx, 60
     jb note_save
     cmp ecx, 120
-    jae .x
+    jb note_new
+.x:
+    ret
+
+note_new:
     and dword [notelen], 0
     or dword [notefile], -1
-.x:
     ret
 
 ; note1.txt .. note9.txt
@@ -562,6 +584,10 @@ draw_files:
     ret
 
 click_files:
+    cmp ecx, 6
+    jb .x
+    cmp ecx, 354
+    jae .x
     cmp edx, 4
     jb .x
     sub edx, 4
@@ -569,6 +595,8 @@ click_files:
     xor edx, edx
     mov ebx, 26
     div ebx
+    cmp edx, 24
+    jae .x
     mov edx, eax
     xor eax, eax
 .l:
@@ -586,13 +614,66 @@ click_files:
 .x:
     ret
 .hit:
+    mov esi, m_file
+    test ebp, ebp
+    jnz ctx_show
     cmp ecx, 320
     jb note_open
+    jmp file_delete
+
+; uses the menu as a text box
+file_rename:
+    mov [file_slot], eax
+    mov byte [file_mode], 2
+    and dword [rename_len], 0
+    mov byte [rename_name], 0
+    mov esi, m_rename
+    jmp ctx_show
+
+file_delete:
     call fs_delete
     cmp eax, [notefile]
     jne .x
     or dword [notefile], -1
+.x:
     ret
+
+close_file_popup:
+    mov byte [file_mode], 0
+    and dword [ctx_items], 0
+    ret
+
+key_files:
+    cmp bl, 1
+    je close_file_popup
+    cmp byte [file_mode], 2
+    jb .x
+    cmp al, 10
+    je .commit
+    mov edi, rename_name
+    mov ebx, rename_len
+    mov ecx, 23
+    call edit_key
+    jc .x
+    mov byte [file_mode], 2
+    mov dword [ctx_items], m_rename
+.x:
+    ret
+.commit:
+    mov eax, [file_slot]
+    mov esi, rename_name
+    call fs_rename
+    jnc close_file_popup
+    mov byte [file_mode], 3
+    mov dword [ctx_items], m_bad
+    ret
+
+file_mode db 0                       ; closed, menu, rename, bad name
+file_slot dd 0
+rename_len dd 0
+rename_name times 24 db 0
+s_rename_prompt db 'New name (Enter)', 0
+s_rename_bad db 'Invalid or taken', 0
 
 draw_calc:
     mov eax, [cx0]
@@ -781,6 +862,13 @@ paint_stroke:
     jae .out
     mov eax, [swatches+eax*4]
     mov [pcolor], eax
+    ret
+
+paint_clear:
+    mov edi, CANVAS
+    mov ecx, CANW*CANH
+    mov eax, 0xFFFFFF
+    rep stosd
     ret
 
 draw_paint:
