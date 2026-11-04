@@ -354,6 +354,21 @@ c_write:
     mov esi, s_full
     jmp tputs
 
+c_curl:
+    mov esi, s_busy
+    cmp dword [co_on], 0
+    jne tputs
+    mov esi, [targ]
+    mov edi, c_url
+    call scopy
+    stosb
+    mov eax, curl_job
+    call co_start
+    pop eax
+    and dword [tlen], 0
+    mov byte [tline], 0
+    ret
+
 c_run:
     mov esi, [targ]
     xor ebx, ebx
@@ -372,7 +387,7 @@ c_run:
 
 cmdtab:
     dd s_c1, c_help, s_c2, c_ls, s_c3, c_cat, s_c4, c_write, s_c5, c_rm, s_c6, c_echo
-    dd s_c7, c_clear, s_c8, c_ver, s_c9, c_time, s_c10, c_run, s_c11, shutdown, s_mv, c_mv, 0, 0
+    dd s_c7, c_clear, s_c8, c_ver, s_c9, c_time, s_c10, c_run, s_c11, shutdown, s_mv, c_mv, s_curl, c_curl, 0, 0
 
 s_c1    db 'help', 0
 s_c2    db 'ls', 0
@@ -386,9 +401,11 @@ s_c9    db 'time', 0
 s_c10   db 'run', 0
 s_c11   db 'shutdown', 0
 s_mv    db 'mv', 0
+s_curl  db 'curl', 0
+s_busy  db 'Busy', 10, 0
 s_prompt db 'xd> ', 0
 s_tbanner db 'Type help', 10, 0
-s_help  db 'ls cat write mv rm echo run time ver clear shutdown', 10, 0
+s_help  db 'ls cat write mv rm echo run curl time ver clear shutdown', 10, 0
 s_bad   db 'Unknown', 10, 0
 s_ver   db 'XD OS ', 0
 s_verb  db ' of 16384', 10, 0

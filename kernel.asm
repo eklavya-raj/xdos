@@ -18,6 +18,7 @@ main:
     call poll
     call clock_tick
     call vm_tick
+    call co_step
     cmp dword [dirty], 0
     jne .full
     ; only the game changed
@@ -30,10 +31,45 @@ main:
     and dword [dirty], 0
     and dword [gdirty], 0
     call scene
+    ; page load on the net stack
     cmp dword [b_go], 0
     je main
-    call browser_go
+    cmp dword [co_on], 0
+    jne main
+    mov eax, browser_go
+    call co_start
     jmp main
+
+; net code gets its own stack so the desktop doesnt freeze
+co_start:
+    mov [co_job], eax
+    mov dword [co_sp], NETSTACK-36
+    mov dword [NETSTACK-4], co_entry
+    mov dword [co_on], 1
+    ret
+
+co_entry:
+    call [co_job]
+    and dword [co_on], 0
+    call co_switch
+
+co_step:
+    cmp dword [co_on], 0
+    je co_ret
+    mov eax, [ticks]
+    cmp eax, [co_tick]
+    jne .go
+    cmp dword [netirq], 0
+    je co_ret
+.go:
+    mov [co_tick], eax
+    and dword [netirq], 0
+co_switch:
+    pushad
+    xchg esp, [co_sp]
+    popad
+co_ret:
+    ret
 
 fastframe:
     movzx ebp, byte [zord+NWIN-1]
@@ -1590,6 +1626,11 @@ dragx   dd 0
 dragy   dd 0
 menu    dd 0
 ctx_items dd 0
+co_on   dd 0
+co_sp   dd 0
+co_job  dd 0
+co_tick dd 0
+netirq  dd 0
 ctx_arg dd 0
 ctx_x   dd 0
 ctx_y   dd 0

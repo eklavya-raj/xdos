@@ -8,7 +8,6 @@ HCOL    equ 0x20243A
 TCOL    equ 0x30344A
 
 parse_url:
-    mov esi, b_addr
     cmp dword [esi], 'http'
     jne .h
     cmp dword [esi+4], 's://'
@@ -50,7 +49,9 @@ parse_url:
 browser_go:
     and dword [b_go], 0
     and dword [b_redir], 0
+    mov dword [pagebuf], PAGE
 .again:
+    mov esi, b_addr
     call parse_url
     test eax, eax
     jnz .err
@@ -89,16 +90,7 @@ browser_go:
     jmp .err
 .body:
     mov esi, PAGE
-.b:
-    cmp byte [esi], 0
-    je .none
-    cmp dword [esi], 0x0A0D0A0D
-    je .bf
-    inc esi
-    jmp .b
-.bf:
-    add esi, 4
-.none:
+    call body_start
     mov dword [b_status], s_done
     mov [b_body], esi
     call layout
@@ -108,6 +100,54 @@ browser_go:
     mov [b_status], eax
     mov dword [dirty], 1
     ret
+
+body_start:
+    cmp byte [esi], 0
+    je .x
+    cmp dword [esi], 0x0A0D0A0D
+    je .f
+    inc esi
+    jmp body_start
+.f:
+    add esi, 4
+.x:
+    ret
+
+curl_job:
+    mov dword [pagebuf], CPAGE
+    mov esi, c_url
+    call parse_url
+    test eax, eax
+    jnz .err
+    call net_get
+    test eax, eax
+    jnz .err
+    mov esi, CPAGE
+    mov ecx, [pagelen]
+    mov byte [esi+ecx], 0
+    call body_start
+.p:
+    lodsb
+    test al, al
+    jz .end
+    cmp al, 13
+    je .p
+    call tputc
+    jmp .p
+.err:
+    mov esi, eax
+    call tputs
+.end:
+    cmp dword [tcol], 0
+    je .nl
+    mov al, 10
+    call tputc
+.nl:
+    ; parse_url clobbered these
+    mov esi, b_addr
+    call parse_url
+    mov dword [dirty], 1
+    jmp prompt
 
 find_location:
     mov esi, PAGE
@@ -776,6 +816,7 @@ l_head   dd 0
 l_nl     dd 0
 l_tag    times 12 db 0
 b_url    times 8 db 0
+c_url    times 72 db 0
 b_addr   db 'info.cern.ch'
          times 116 db 0
 b_host   times 128 db 0

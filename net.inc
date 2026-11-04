@@ -2,6 +2,8 @@ RXBUF   equ 0x2200000
 TXBUF   equ 0x2280000
 PAGE    equ 0x2300000
 PAGEMAX equ 0xF0000
+CPAGE   equ 0x2A00000
+NETSTACK equ 0x27C0000 ;net coroutine stack
 
 ;find the 8139 on pci
 net_init:
@@ -43,6 +45,25 @@ net_init:
     in eax, dx
     or eax, 5
     out dx, eax
+    mov eax, [pcia]
+    ; irq line
+    or al, 0x3C
+    mov dx, 0xCF8
+    out dx, eax
+    mov dx, 0xCFC
+    in eax, dx
+    movzx ecx, al
+    lea edi, [IDT+0x100+ecx*8]
+    mov eax, irqnet
+    call gate
+    in al, 0xA1
+    mov ah, al
+    in al, 0x21
+    btr ax, cx
+    btr ax, 2
+    out 0x21, al
+    mov al, ah
+    out 0xA1, al
     mov edx, [nic]
     ; power on + reset
     add edx, 0x52
@@ -62,7 +83,7 @@ net_init:
     out dx, eax
     mov edx, [nic]
     add edx, 0x3C
-    xor ax, ax
+    mov ax, 1
     out dx, ax
     mov edx, [nic]
     add edx, 0x44
@@ -138,6 +159,103 @@ nic_recv:
     ret
 .none:
     stc
+    ret
+
+irqnet:
+    pushad
+    mov edx, [ss:nic]
+    add edx, 0x3E
+    in ax, dx
+    out dx, ax
+    mov byte [ss:netirq], 1
+    mov al, 0x20
+    out 0xA0, al  ; eoi both
+    out 0x20, al
+    popad
+    iretd
+
+; bl = 1 discover, 3 request
+dhcp_send:
+    pushad
+    mov edi, TXBUF+42
+    mov ecx, 300
+    xor eax, eax
+    rep stosb
+    mov edi, TXBUF+42
+    mov dword [edi], 0x00060101
+    mov dword [edi+4], 'XDOS'           ; xid
+    mov byte [edi+10], 0x80
+    add edi, 28
+    mov esi, mac
+    movsd
+    movsw
+    mov edi, TXBUF+42+236
+    mov eax, 0x63538263
+    stosd
+    mov ax, 0x0135
+    stosw
+    mov al, bl
+    stosb
+    mov eax, 0x06030237
+    stosd
+    cmp bl, 3
+    jne .e
+    mov ax, 0x0432
+    stosw
+    mov eax, [reqip]
+    stosd
+    mov ax, 0x0436
+    stosw
+    mov eax, [srvid]
+    stosd
+.e:
+    mov al, 255
+    stosb
+    mov dword [TXBUF+34], 0x43004400
+    mov dword [TXBUF+38], 0x00003401
+    or dword [dstip], -1
+    mov bl, 17
+    mov ecx, 308
+    call ip_hdr
+    call eth_start
+    mov ecx, 342
+    call nic_send
+    popad
+    ret
+
+dhcp_in:
+    cmp dword [esi+46], 'XDOS'
+    jne .x
+    mov eax, [esi+58]
+    mov [reqip], eax
+    add esi, 282
+.o:
+    lodsb
+    cmp al, 255
+    je .x
+    test al, al
+    jz .o
+    movzx ecx, byte [esi]
+    mov edx, [esi+1]
+    cmp al, 53
+    jne .a
+    mov [dhst], dl
+.a:
+    cmp al, 3
+    jne .b
+    mov [gwip], edx
+.b:
+    cmp al, 6
+    jne .c
+    mov [dnsip], edx
+.c:
+    cmp al, 54
+    jne .d
+    mov [srvid], edx
+.d:
+    lea esi, [esi+ecx+1]
+    jmp .o
+.x:
     ret
 
 csum:
@@ -290,7 +408,11 @@ tcp_send:
 
 net_poll:
     call nic_recv
-    jc .x
+    jc co_ret
+    call net_one
+    jmp net_poll
+
+net_one:
     mov ax, [esi+12]
     cmp ax, 0x0608
     je .arp
@@ -334,7 +456,10 @@ net_poll:
     mov ecx, 42
     jmp nic_send
 
+;68=dhcp, 40000=our dns
 dns_in:
+    cmp word [esi+36], 0x4400
+    je dhcp_in
     cmp word [esi+36], 0x409C
     jne .x
     cmp word [esi+42], 0x3412
@@ -428,7 +553,7 @@ tcp_in:
     test edx, edx
     jz .fin
     lea esi, [esi+34+ebx]
-    mov edi, PAGE
+    mov edi, [pagebuf]
     add edi, [pagelen]
     mov ecx, edx
     mov eax, [pagelen]
@@ -457,10 +582,12 @@ tcp_in:
 .x:
     ret
 
+; times out after ~11s
 wait_for:
     mov eax, [ticks]
     mov [wcount], eax
 .l:
+    call co_switch
     call net_poll
     mov eax, [esi_flag]
     mov eax, [eax]
@@ -489,6 +616,24 @@ net_get:
     mov eax, e_nonic
     ret
 .nic:
+    cmp dword [ourip], 0
+    jne .ipok
+    mov bl, 1
+    call dhcp_send
+    mov dword [esi_flag], dhst
+    or dword [ebx_flag], -1
+    call wait_for
+    test eax, eax
+    jz .nodh
+    mov bl, 3
+    call dhcp_send
+    mov dword [ebx_flag], 5
+    call wait_for
+    test eax, eax
+    jz .nodh
+    mov eax, [reqip]
+    mov [ourip], eax
+.ipok:
     cmp dword [haveg], 0
     jne .gw
     call arp_send
@@ -497,6 +642,7 @@ net_get:
     call wait_for
     test eax, eax
     jnz .gw
+.nodh:
     mov eax, e_arp
     ret
 .gw:
@@ -625,10 +771,14 @@ sport    dw 0
 sportn   dw 49152
 ipid     dw 1
 mac      times 6 db 0
-gwmac    times 6 db 0
-ourip    db 10, 0, 2, 15
-gwip     db 10, 0, 2, 2
-dnsip    db 10, 0, 2, 3
+gwmac    times 6 db 0xFF
+ourip    dd 0
+gwip     dd 0
+dnsip    dd 0
+reqip    dd 0
+srvid    dd 0
+dhst     dd 0
+pagebuf  dd PAGE
 dstip    dd 0
 r_get    db 'GET ', 0
 r_host   db ' HTTP/1.0', 13, 10, 'Host: ', 0
