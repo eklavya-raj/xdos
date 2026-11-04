@@ -306,7 +306,7 @@ fsdir:
 fsreadme:
     db 'Welcome to XD OS.', 10, 10
     db 'The system and every file you save live in', 10
-    db 'one 16,384 byte image.', 10
+    db 'one 32,768 byte image.', 10
 fsreadme_end:
 
 times IMGSEC*512-($-$$) db 0

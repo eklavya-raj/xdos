@@ -6,8 +6,8 @@ HILLT   equ 0x2000000
 NOTE    equ 0x2100000
 TBUF    equ 0x2110000
 FONT    equ 0x80000                     ; bios font
-FSMAX   equ 3
-IMGSEC  equ 32
+FSMAX   equ 4
+IMGSEC  equ 64
 FSLBA   equ IMGSEC-1-2*FSMAX  ;dir sector
 FSMEM   equ 0x7C00+FSLBA*512 ; bios already loaded it
 BARY    equ 728

@@ -369,7 +369,8 @@ tcp_send:
     mov edi, TXBUF+34
     mov ax, [sport]
     mov [edi], ax
-    mov word [edi+2], 0x5000
+    mov ax, [dport]
+    mov [edi+2], ax
     mov eax, [sndnxt]
     bswap eax                       ; net order
     mov [edi+4], eax
@@ -530,6 +531,7 @@ tcp_in:
     bswap eax
     cmp dword [tstate], 1
     jne .est
+  ; syn-ack
     test byte [tflags], 0x12
     jz .x
     inc eax
@@ -539,6 +541,8 @@ tcp_in:
     mov bl, 0x10
     xor ecx, ecx
     call tcp_send
+    cmp dword [tls_on], 0
+    jne .x
     mov bl, 0x18
     mov esi, reqbuf
     mov ecx, [reqlen]
@@ -710,9 +714,31 @@ net_get:
     add dword [sndnxt], 0x10000
     and dword [pagelen], 0
     mov dword [tstate], 1
+    cmp dword [tls_on], 0
+    je .syn
+    mov eax, [pagebuf]
+    mov [tl_out], eax
+    mov dword [pagebuf], RAWBUF
+.syn:
     mov bl, 2
     xor ecx, ecx
     call tcp_send
+    cmp dword [tls_on], 0
+    je .plain
+    mov dword [esi_flag], tstate
+    mov dword [ebx_flag], 2
+    call wait_for
+    test eax, eax
+    mov eax, e_tcp
+    jz .tdone
+    call tls_run ; https
+.tdone:
+    mov ebx, [tl_out]
+    mov [pagebuf], ebx
+    mov ebx, [tl_outlen]
+    mov [pagelen], ebx
+    ret
+.plain:
     mov dword [esi_flag], tstate
     mov dword [ebx_flag], 3
     call wait_for
@@ -728,16 +754,60 @@ net_get:
 
 build_req:
     mov edi, reqbuf
-    mov esi, r_get
+    mov esi, [req_m]
     call scopy
+    mov al, ' '
+    stosb
     mov esi, b_path
     call scopy
     mov esi, r_host
     call scopy
     mov esi, b_host
     call scopy
-    mov esi, r_end
+    mov esi, r_ua
     call scopy
+    mov esi, [req_h]
+    call scopy
+    mov ecx, [req_bl]
+    jecxz .nb
+    mov esi, [req_h]
+.f:
+    cmp byte [esi], 0
+    je .add
+    push esi
+    mov ebx, s_ctl
+    mov edx, 13
+.c:
+    mov al, [esi]
+    or al, 0x20
+    cmp al, [ebx]
+    jne .no
+    inc esi
+    inc ebx
+    dec edx
+    jnz .c
+    pop esi
+    jmp .has
+.no:
+    pop esi
+    inc esi
+    jmp .f
+.add:
+    mov esi, r_ctype
+    call scopy
+.has:
+    mov esi, r_clen
+    call scopy
+    mov eax, ecx
+    call itoa
+    call scopy
+    mov ax, 0x0A0D
+    stosw
+.nb:
+    mov ax, 0x0A0D
+    stosw
+    mov esi, [req_b]
+    rep movsb
     sub edi, reqbuf
     mov [reqlen], edi
     ret
@@ -780,11 +850,19 @@ srvid    dd 0
 dhst     dd 0
 pagebuf  dd PAGE
 dstip    dd 0
-r_get    db 'GET ', 0
 r_host   db ' HTTP/1.0', 13, 10, 'Host: ', 0
-r_end    db 13, 10, 13, 10, 0
+r_ua     db 13, 10, 'User-Agent: xd-curl/1.0', 13, 10, 'Accept: */*', 13, 10, 0
+r_ctype  db 'Content-Type: application/x-www-form-urlencoded', 13, 10, 0
+r_clen   db 'Content-Length: ', 0
+s_ctl    db 'content-type:'
+r_getm   db 'GET', 0
+r_post   db 'POST', 0
+r_none   db 0
+req_m    dd r_getm
+req_h    dd r_none
+req_b    dd r_none
+req_bl   dd 0
 e_nonic  db 'No network', 0
 e_arp    equ e_nonic
 e_dns    db 'Site not found', 0
 e_tcp    equ e_dns
-reqbuf   times 320 db 0

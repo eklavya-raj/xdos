@@ -7,11 +7,19 @@ ACOL    equ 0x1A5FD0
 HCOL    equ 0x20243A
 TCOL    equ 0x30344A
 
+; host + path, 80 or 443
 parse_url:
+    and dword [tls_on], 0
+    mov word [dport], 0x5000
     cmp dword [esi], 'http'
     jne .h
     cmp dword [esi+4], 's://'
-    je .tls
+    jne .hp
+    mov byte [tls_on], 1
+    mov word [dport], 0xBB01
+    add esi, 8
+    jmp .h
+.hp:
     cmp dword [esi+3], 'p://'
     jne .h
     add esi, 7
@@ -21,6 +29,8 @@ parse_url:
     lodsb
     cmp al, '/'
     je .p
+    cmp al, '?'
+    je .q
     test al, al
     jz .e
     stosb
@@ -29,6 +39,17 @@ parse_url:
     xor al, al
     stosb
     mov word [b_path], '/'
+    xor eax, eax
+    ret
+.q:
+    xor al, al
+    stosb
+    dec esi
+    mov edi, b_path
+    mov al, '/'
+    stosb
+    call scopy
+    stosb
     xor eax, eax
     ret
 .p:
@@ -41,18 +62,20 @@ parse_url:
     stosb
     xor eax, eax
     ret
-.tls:
-    mov eax, e_tls
-    ret
 
 ; follows 3 redirects max
 browser_go:
     and dword [b_go], 0
     and dword [b_redir], 0
     mov dword [pagebuf], PAGE
+    mov dword [req_m], r_getm
+    mov dword [req_h], r_none
+    and dword [req_bl], 0
 .again:
     mov esi, b_addr
     call parse_url
+    mov ebx, [tls_on]
+    mov [b_tls], ebx
     test eax, eax
     jnz .err
     call net_get
@@ -68,8 +91,6 @@ browser_go:
     jz .body
     cmp dword [eax], 'http'
     jne .body
-    cmp byte [eax+4], 's'
-    je .tlsredir
     inc dword [b_redir]
     cmp dword [b_redir], 3
     ja .body
@@ -85,13 +106,14 @@ browser_go:
     mov byte [edi], 0
     mov ecx, 0
     jmp .again
-.tlsredir:
-    mov eax, e_tls
-    jmp .err
 .body:
     mov esi, PAGE
     call body_start
     mov dword [b_status], s_done
+    cmp dword [b_tls], 0
+    je .st
+    mov dword [b_status], s_unver
+.st:
     mov [b_body], esi
     call layout
     mov dword [dirty], 1
@@ -115,6 +137,11 @@ body_start:
 
 curl_job:
     mov dword [pagebuf], CPAGE
+    mov dword [req_m], c_meth
+    mov dword [req_h], c_hdrs
+    mov dword [req_b], c_body
+    mov eax, [c_blen]
+    mov [req_bl], eax
     mov esi, c_url
     call parse_url
     test eax, eax
@@ -125,6 +152,8 @@ curl_job:
     mov esi, CPAGE
     mov ecx, [pagelen]
     mov byte [esi+ecx], 0
+    cmp byte [c_inc], 0
+    jne .p
     call body_start
 .p:
     lodsb
@@ -495,6 +524,10 @@ follow:
     mov esi, b_url
     mov dword [b_url], 'http'
     mov dword [b_url+4], '://'
+    cmp dword [b_tls], 0
+    je .u
+    mov dword [b_url+4], 's://'
+.u:
     call scopy
     mov esi, b_host
     call scopy
@@ -815,8 +848,13 @@ l_nlink  dd 0
 l_head   dd 0
 l_nl     dd 0
 l_tag    times 12 db 0
-b_url    times 8 db 0
-c_url    times 72 db 0
+b_url    times 12 db 0
+b_tls    dd 0
+c_hlen   dd 0
+c_blen   dd 0
+c_inc    db 0
+c_k      db 0
+c_mset   db 0
 b_addr   db 'info.cern.ch'
          times 116 db 0
 b_host   times 128 db 0
@@ -830,7 +868,7 @@ s_ready  db 'Ready', 0
 s_load   db 'Loading...', 0
 s_done   db 'Done', 0
 s_back   db '<', 0
-e_tls    db 'Needs HTTPS', 0
+s_unver  db 'Done, not verified', 0
 b_home   db '<h1>XD Browser</h1><p><a href="http://info.cern.ch/">First website</a>'
          db '<p><a href="http://example.com/">example.com</a>'
          db '<p><a href="http://neverssl.com/">neverssl.com</a>', 0

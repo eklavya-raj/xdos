@@ -85,7 +85,12 @@ tputc:
     jmp .x
 .bs:
     cmp dword [tcol], 0
+    jne .b2
+    cmp dword [trow], 0
     je .x
+    dec dword [trow]
+    mov dword [tcol], TCOLS
+.b2:
     dec dword [tcol]
     imul edi, [trow], TCOLS
     add edi, [tcol]
@@ -165,7 +170,7 @@ key_term:
     je .run
     mov edi, tline
     mov ebx, tlen
-    mov ecx, 70
+    mov ecx, 238
     push eax
     call edit_key
     pop eax
@@ -354,19 +359,152 @@ c_write:
     mov esi, s_full
     jmp tputs
 
+;curl [-i] [-k] [-X m] [-H h] [-d data] url
 c_curl:
     mov esi, s_busy
     cmp dword [co_on], 0
     jne tputs
-    mov esi, [targ]
-    mov edi, c_url
+    mov edi, c_meth
+    mov esi, r_getm
     call scopy
     stosb
+    xor eax, eax
+    mov [c_hlen], eax
+    mov [c_blen], eax
+    mov [c_hdrs], al
+    mov [c_url], al
+    mov [c_inc], al
+    mov [c_k], al
+    mov [c_mset], al
+    mov esi, [targ]
+.t:
+    call ctok
+    jz .go
+    cmp byte [ebx], '-'
+    jne .url
+    mov al, [ebx+1]
+    cmp al, 'i'
+    je .inc
+    cmp al, 'k'
+    je .k
+    push eax
+    call ctok
+    pop eax  ; skip prompt, curl_job prints it
+    jz .go
+    cmp al, 'X'
+    je .x
+    cmp al, 'H'
+    je .h
+    cmp al, 'd'
+    je .d
+    jmp .t
+.inc:
+    mov byte [c_inc], 1
+    jmp .t
+.k:
+    mov byte [c_k], 1
+    jmp .t
+.x:
+    mov edi, c_meth
+    call ccopy
+    mov byte [c_mset], 1
+    jmp .t
+.h:
+    mov edi, c_hdrs
+    add edi, [c_hlen]
+    call ccopy
+    mov ax, 0x0A0D
+    stosw
+    mov byte [edi], 0
+    sub edi, c_hdrs
+    mov [c_hlen], edi
+    jmp .t
+.d:
+    mov edi, c_body
+    call ccopy
+    sub edi, c_body
+    mov [c_blen], edi
+    cmp byte [c_mset], 0
+    jne .t
+    push esi
+    mov edi, c_meth
+    mov esi, r_post
+    call scopy
+    stosb
+    pop esi
+    jmp .t
+.url:
+    mov edi, c_url
+    call ccopy
+    jmp .t
+.go:
+    mov esi, s_nourl
+    cmp byte [c_url], 0
+    je tputs
+  ; same error real curl gives
+    cmp dword [c_url], 'http'
+    jne .ok
+    cmp byte [c_url+4], 's'
+    jne .ok
+    mov esi, s_cert
+    cmp byte [c_k], 0
+    je tputs
+.ok:
     mov eax, curl_job
     call co_start
     pop eax
     and dword [tlen], 0
     mov byte [tline], 0
+    ret
+
+ccopy:
+    push esi
+    mov esi, ebx
+    call scopy
+    mov [edi], al
+    pop esi
+    ret
+
+; handles quotes
+ctok:
+    lodsb
+    cmp al, ' '
+    je ctok
+    test al, al
+    jz .end
+    lea ebx, [esi-1]
+    cmp al, 39
+    je .q
+    cmp al, '"'
+    je .q
+.w:
+    lodsb
+    test al, al
+    jz .last
+    cmp al, ' '
+    jne .w
+    mov byte [esi-1], 0
+    or al, 1
+    ret
+.last:
+    dec esi
+    or al, 1
+    ret
+.q:
+    mov ah, al
+    inc ebx
+.ql:
+    lodsb
+    test al, al
+    jz .last
+    cmp al, ah
+    jne .ql
+    mov byte [esi-1], 0
+    or al, 1
+    ret
+.end:
+    dec esi
+    cmp al, al
     ret
 
 c_run:
@@ -403,12 +541,14 @@ s_c11   db 'shutdown', 0
 s_mv    db 'mv', 0
 s_curl  db 'curl', 0
 s_busy  db 'Busy', 10, 0
+s_nourl db 'curl: no URL', 10, 0
+s_cert  db "curl: (60) can't check certificates, add -k", 10, 0
 s_prompt db 'xd> ', 0
 s_tbanner db 'Type help', 10, 0
 s_help  db 'ls cat write mv rm echo run curl time ver clear shutdown', 10, 0
 s_bad   db 'Unknown', 10, 0
 s_ver   db 'XD OS ', 0
-s_verb  db ' of 16384', 10, 0
+s_verb  db ' of 32768', 10, 0
 s_bytes db ' bytes', 10, 0
 s_nofile db 'No file', 10, 0
 s_noapp db 'No app', 10, 0
@@ -423,7 +563,7 @@ tcol    dd 0
 trow    dd 0
 tlen    dd 0
 targ    dd 0
-tline   times 72 db 0
+tline   times 240 db 0
 
 draw_note:
     mov eax, [cx0]

@@ -4,6 +4,10 @@ org KERNEL
 
     ;boot sector jumps here
     call sys_init
+;build with -dCRYPTOTEST
+%ifdef CRYPTOTEST
+    call crypto_test
+%endif
     fninit
     cld
     call mouse_init
@@ -1615,6 +1619,8 @@ scene:
 %include "vm.inc"
 %include "net.inc"
 %include "browser.inc"
+%include "crypto.inc"
+%include "tls.inc"
 
 mx      dd 512
 my      dd 384
@@ -1758,4 +1764,5 @@ arrow:
 
 iconc   dd 0x2F6BFF, 0x2A2F52, 0xF0A020, 0xE0A020, 0x3A8FE0, 0xF0C040, 0x3AA0E0, 0xD06030, 0xC04A90
 %include "icons.inc"
+%include "bss.inc"
 
