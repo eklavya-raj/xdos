@@ -2,6 +2,7 @@ WORDS   equ 0x2400000 ; x y text w link head
 WTEXT   equ 0x2500000
 LINKS   equ 0x2600000
 WSZ     equ 24
+MAXW    equ 40000 ;youtube was eating the page tables
 BCTOP   equ 38
 ACOL    equ 0x1A5FD0
 HCOL    equ 0x20243A
@@ -108,7 +109,7 @@ browser_go:
     jmp .again
 .body:
     mov esi, PAGE
-    call body_start
+    call fix_body
     mov dword [b_status], s_done
     cmp dword [b_tls], 0
     je .st
@@ -135,6 +136,74 @@ body_start:
 .x:
     ret
 
+; chunked -> plain, in place
+fix_body:
+    push esi
+    call body_start
+    pop edi
+.f:
+    cmp edi, esi
+    jae .x
+    mov eax, [edi]
+    or eax, 0x20202020
+    cmp eax, 'chun'
+    jne .n
+    mov eax, [edi+3]
+    or eax, 0x20202020
+    cmp eax, 'nked'
+    je .dc
+.n:
+    inc edi
+    jmp .f
+.dc:
+    push esi
+    mov edi, esi
+.ch:
+    xor ecx, ecx
+.h:
+    movzx eax, byte [esi]
+    inc esi
+    mov edx, eax
+    or dl, 0x20
+    sub dl, '0'
+    cmp dl, 10
+    jb .hd
+    sub dl, 39
+    cmp dl, 16
+    jae .sl
+.hd:
+    shl ecx, 4
+    movzx edx, dl
+    add ecx, edx
+    jmp .h
+.sl:
+    test al, al
+    jz .end
+    cmp al, 10
+    je .dat
+    lodsb
+    jmp .sl
+.dat:
+    jecxz .end
+.cp:
+    lodsb
+    test al, al
+    jz .end
+    stosb
+    loop .cp
+    lodsb
+    test al, al
+    jz .end
+    lodsb
+    test al, al
+    jz .end
+    jmp .ch
+.end:
+    mov byte [edi], 0
+    pop esi
+.x:
+    ret
+
 curl_job:
     mov dword [pagebuf], CPAGE
     mov dword [req_m], c_meth
@@ -152,9 +221,10 @@ curl_job:
     mov esi, CPAGE
     mov ecx, [pagelen]
     mov byte [esi+ecx], 0
+    call fix_body
     cmp byte [c_inc], 0
-    jne .p
-    call body_start
+    je .p
+    mov esi, CPAGE
 .p:
     lodsb
     test al, al
@@ -242,6 +312,8 @@ flush:
     call newline
 .fit:
     mov edi, [l_n]
+    cmp edi, MAXW
+    jae .full
     imul edi, WSZ
     add edi, WORDS
     mov eax, [l_x]
@@ -255,6 +327,7 @@ flush:
     mov eax, [l_head]
     mov [edi+20], eax
     inc dword [l_n]
+.full:
     lea eax, [ebx+4]
     add [l_x], eax
     mov eax, [l_wp]
@@ -322,7 +395,14 @@ layout:
     mov [b_doch], eax
     ret
 .ent:
+  ;entities
+    cmp byte [esi], '#'
+    je .num
     mov eax, [esi]
+    cmp eax, 'quot'
+    je .quot
+    cmp eax, 'apos'
+    je .apos
     cmp eax, 'amp;'
     je .amp
     and eax, 0xFFFFFF
@@ -350,6 +430,70 @@ layout:
 .nb:
     add esi, 5
     jmp .ws
+.quot:
+    add esi, 5
+    mov al, '"'
+    jmp .put
+.apos:
+    add esi, 5
+    mov al, 39
+    jmp .put
+.num:
+    inc esi
+    xor edx, edx
+    mov ebx, 10
+    mov al, [esi]
+    or al, 0x20
+    cmp al, 'x'
+    jne .dl
+    mov ebx, 16
+    inc esi
+.dl:
+    movzx eax, byte [esi]
+    inc esi
+    cmp al, ';'
+    je .de
+    or al, 0x20
+    sub al, '0'
+    cmp al, 10
+    jb .dv
+    sub al, 39
+.dv:
+    cmp eax, ebx
+    jae .bad
+    imul edx, ebx
+    add edx, eax
+    cmp edx, 0x10FFFF
+    jbe .dl
+.bad:
+    dec esi
+    mov al, '?'
+    jmp .put
+.de:
+    cmp edx, 32
+    jb .ws
+    mov eax, edx
+    cmp edx, 127
+    jb .put
+    cmp edx, 160
+    je .ws
+    mov al, '-'
+    cmp edx, 8211
+    je .put
+    cmp edx, 8212
+    je .put
+    mov al, 39
+    cmp edx, 8216
+    je .put
+    cmp edx, 8217
+    je .put
+    mov al, '"'
+    cmp edx, 8220
+    je .put
+    cmp edx, 8221
+    je .put
+    mov al, '?'
+    jmp .put
 .tag:
   ; script/style/title get skipped
     call flush

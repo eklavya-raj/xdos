@@ -87,7 +87,7 @@ net_init:
     out dx, ax
     mov edx, [nic]
     add edx, 0x44
-    mov eax, 0x188F
+    mov eax, 0x108F ;32k ring, qemu wraps packets at exactly 64k
     out dx, eax
     mov edx, [nic]
     add edx, 0x37
@@ -148,7 +148,7 @@ nic_recv:
     movzx ecx, word [esi+2]
     add esi, 4
     lea eax, [eax+ecx+4+3]
-    and eax, 0xFFFC
+    and eax, 0x7FFC
     mov [rxoff], eax
     sub eax, 16		; capr - 16, 8139 thing
     mov edx, [nic]

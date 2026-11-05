@@ -218,6 +218,23 @@ mouse_init:
     call kdata
     mov al, 0xF6
     call mwrite
+    ;200,100,80 = wheel on
+    mov esi, imps
+.r:
+    lodsb
+    test al, al
+    jz .id
+    call mwrite
+    jmp .r
+.id:
+    ; id 3=wheel, 4 byte packets
+    mov al, 0xF2
+    call mwrite
+    call kread
+    cmp al, 3
+    jne .e
+    mov byte [mpsz], 4
+.e:
     mov al, 0xF4	; enable reporting
     call mwrite
     ret
@@ -249,9 +266,19 @@ mbyte:
     mov [mpkt+ebx], al
     inc ebx
     mov [midx], ebx
-    cmp ebx, 3
+    cmp ebx, [mpsz]
     jb .done
     and dword [midx], 0
+    ; wheel -> browser
+    movsx eax, byte [mpkt+3]
+    test eax, eax
+    jz .nz
+    movzx ebx, byte [zord+NWIN-1]
+    cmp ebx, A_BROWSE
+    jne .nz
+    imul eax, eax, 66
+    call scroll
+.nz:
     movzx eax, byte [mpkt+1]
     test byte [mpkt], 0x10
     jz .xp
@@ -1626,6 +1653,8 @@ mx      dd 512
 my      dd 384
 btn     dd 0
 midx    dd 0
+mpsz    dd 3
+imps    db 0xF3, 200, 0xF3, 100, 0xF3, 80, 0 ; wheel knock
 mpkt    db 0, 0, 0, 0
 drag    dd -1
 dragx   dd 0
