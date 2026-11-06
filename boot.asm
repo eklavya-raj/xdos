@@ -23,33 +23,6 @@ dap1:
     dw 0, 0x07E0
     dq 1
 
-; bh = font, cx = words
-bfont:
-    push cx
-    push di
-    mov ax, 0x1130
-    int 0x10
-    pop di
-    pop cx
-    push es
-    pop ds
-    mov si, bp
-    mov ax, 0x8000
-    mov es, ax
-    rep movsw
-    xor ax, ax
-    mov ds, ax
-    mov es, ax
-    ret
-
-gdt:
-    dq 0
-    dq 0x00CF9A000000FFFF
-    dq 0x00CF92000000FFFF
-gdtr:
-    dw 23
-    dd gdt
-
 bits 32
 pm:
     mov ax, 0x10
@@ -64,8 +37,8 @@ pm:
     ;all probs start at 1/2
     mov edi, PROBS
     mov ecx, 640+2048
-    mov ax, 2048
-    rep stosw
+    mov eax, 0x08000800
+    rep stosd
     mov esi, payload
     lodsd
     mov edi, KERNEL
@@ -130,7 +103,17 @@ pm:
     jae KERNEL
     lodsb
     cmp al, 0xE8
+    je .fix
+    cmp al, 0xE9
+    je .fix
+    cmp al, 0x0F
     jne .f
+    mov al, [esi]
+    and al, 0xF0
+    cmp al, 0x80
+    jne .f
+    inc esi
+.fix:
     lea eax, [esi+4-KERNEL]
     sub [esi], eax
     add esi, 4
@@ -167,25 +150,50 @@ gamma:
 getbit:
     push ecx
     push edx
-    lea ecx, [PROBS+eax*2]
-    movzx edx, word [ecx]
+    lea ecx, [PROBS+eax*4]
+    movzx eax, word [ecx]
+    ;fast+slow prob, avg
+    movzx edx, word [ecx+2]
+    add edx, eax
+    shr edx, 1
     mov eax, ebp
     shr eax, 12
     imul eax, edx
     cmp ebx, eax
     jae .one
     mov ebp, eax
-    mov eax, 4096
-    sub eax, edx
-    shr eax, 4
-    add [ecx], ax
+    mov dl, 3
+    call .up
+    mov dl, 6
+    call .up
     xor edx, edx
     jmp .n
+.up:
+    mov ax, 4096
+    sub ax, [ecx]
+    xchg cl, dl
+    shr ax, cl
+    xchg cl, dl
+    add [ecx], ax
+    inc ecx
+    inc ecx
+    ret
+.dn:
+    mov ax, [ecx]
+    xchg cl, dl
+    shr ax, cl
+    xchg cl, dl
+    sub [ecx], ax
+    inc ecx
+    inc ecx
+    ret
 .one:
     sub ebx, eax
     sub ebp, eax
-    shr edx, 4
-    sub [ecx], dx
+    mov dl, 3
+    call .dn
+    mov dl, 6
+    call .dn
     mov edx, 1
 .n:
     cmp ebp, 1<<24
@@ -209,9 +217,6 @@ getbit:
     clc
     ret
 
-u_end dd 0
-u_was dd 0
-u_off dd 0
 
 bits 16
 times 510-($-$$) db 0
@@ -287,14 +292,47 @@ stage2:
     or eax, 1
     mov cr0, eax
     jmp dword 0x08:pm
+
 .fail:
     hlt
     jmp .fail
 
+; bh = font, cx = words
+bfont:
+    push cx
+    push di
+    mov ax, 0x1130
+    int 0x10
+    pop di
+    pop cx
+    push es
+    pop ds
+    mov si, bp
+    mov ax, 0x8000
+    mov es, ax
+    rep movsw
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    ret
+
+gdt:
+    dq 0
+    dq 0x00CF9A000000FFFF
+    dq 0x00CF92000000FFFF
+gdtr:
+    dw 23
+    dd gdt
+
+u_end dd 0
+u_was dd 0
+u_off dd 0
+
 payload:
     incbin "kernel.lz"
 payload_end:
-times FSLBA*512-($-$$) db 0
+; dir lives in the last 128 bytes of this sector
+times FSLBA*512+384-($-$$) db 0
 
 ; name 24, size, used
 fsdir:
@@ -302,11 +340,11 @@ fsdir:
     times 24-10 db 0
     dd fsreadme_end-fsreadme
     dd 1
-    times 512-($-fsdir) db 0
+    times 128-($-fsdir) db 0
 fsreadme:
     db 'Welcome to XD OS.', 10, 10
     db 'The system and every file you save live in', 10
-    db 'one 20,992 byte image.', 10
+    db 'one 20,480 byte image.', 10
 fsreadme_end:
 
 times IMGSEC*512-($-$$) db 0

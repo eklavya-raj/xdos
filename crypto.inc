@@ -6,6 +6,72 @@
     call %1
 %endmacro
 
+;k and h from primes at boot, saves 288 bytes
+sha_init:
+    fninit
+    fldcw [cw_trunc]
+    xor ebx, ebx
+    mov ecx, 1
+.next:
+    inc ecx
+    mov esi, 2
+.tr:
+    cmp esi, ecx
+    jae .pr
+    mov eax, ecx
+    xor edx, edx
+    div esi
+    test edx, edx
+    jz .next
+    inc esi
+    jmp .tr
+.pr:
+  ; cbrt=2^(log2(p)/3)
+    mov [t_x], ecx
+    fild dword [t_x]
+    fld1
+    fxch
+    fyl2x
+    fidiv dword [c_three]
+    fld st0
+    frndint
+    fsub st1, st0
+    fxch
+    f2xm1
+    fld1
+    faddp
+    fscale
+    fstp st1
+    lea edi, [sha_k+ebx*4]
+    call frac32
+    cmp ebx, 8
+    jae .nh
+    ; sqrt for h0
+    fild dword [t_x]
+    fsqrt
+    lea edi, [sha_h0+ebx*4]
+    call frac32
+.nh:
+    inc ebx
+    cmp ebx, 64
+    jb .next
+    fninit
+    ret
+
+frac32:
+    fld st0
+    frndint
+    fsubp st1, st0
+    fmul dword [c_2_32]
+    fistp qword [t_q]
+    mov eax, [t_q]
+    mov [edi], eax
+    ret
+
+cw_trunc dw 0x0F7F ;truncate
+c_three  dd 3
+c_2_32   dd 4294967296.0
+
 sha256:
     pushad
     mov [sh_out], edi

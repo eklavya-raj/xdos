@@ -7,7 +7,7 @@ NOTE    equ 0x2100000
 TBUF    equ 0x2110000
 FONT    equ 0x80000                     ; bios font
 FSMAX   equ 4
-IMGSEC  equ 41
+IMGSEC  equ 40
 FSLBA   equ IMGSEC-1-2*FSMAX  ;dir sector
 FSMEM   equ 0x7C00+FSLBA*512 ; bios already loaded it
 BARY    equ 728

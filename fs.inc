@@ -66,7 +66,7 @@ fs_savedir:
 
 fs_entry:
     shl eax, 5
-    add eax, FSMEM
+    add eax, FSMEM+384
     ret
 
 fs_data:

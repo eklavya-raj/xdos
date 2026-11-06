@@ -4,12 +4,12 @@ org KERNEL
 
     ;boot sector jumps here
     call sys_init
+    cld
+    call sha_init
 ;build with -dCRYPTOTEST
 %ifdef CRYPTOTEST
     call crypto_test
 %endif
-    fninit
-    cld
     call mouse_init
     call font_init
     call wallpaper

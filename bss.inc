@@ -1,4 +1,7 @@
 absolute 0x2B00000
+sha_h0    resd 8
+sha_k     resd 64
+t_q       resq 1
 sh_h      resd 8
 sh_v      resd 8
 sh_w      resd 64
