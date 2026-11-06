@@ -1,3 +1,5 @@
 os.img
 *.lz
 *.bin
+cmtab.inc
+__pycache__/

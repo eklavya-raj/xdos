@@ -7,7 +7,7 @@ NOTE    equ 0x2100000
 TBUF    equ 0x2110000
 FONT    equ 0x80000                     ; bios font
 FSMAX   equ 4
-IMGSEC  equ 40
+IMGSEC  equ 38 ; 19456 bytes
 FSLBA   equ IMGSEC-1-2*FSMAX  ;dir sector
 FSMEM   equ 0x7C00+FSLBA*512 ; bios already loaded it
 BARY    equ 728
@@ -37,6 +37,11 @@ CANVAS  equ 0x1800000
 CANW    equ 420
 CANH    equ 280
 KERNEL  equ 0x100010	; unpacked kernel
+CMTAB   equ 0x3000000
+CMH     equ 0x5100
+CMK     equ 0x5180
+CMPART  equ 0x5200
+CMPROB  equ 0x5204
 PROBS   equ 0x2000000
 ; filled in by the boot sector
 lfb     equ 0x5000
