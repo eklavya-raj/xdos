@@ -591,9 +591,10 @@ kgdtr:
 kidtr:
     dw 256*8-1
     dd IDT
+; esp0 for irqs from v86
 tss:
-    dd 0, VSTACK, 0x10
-    times 23 dd 0
+    dd 0, VSTACK, 0x10, 1
+    times 22 dd 0
 g_flappy:
     incbin "games/flappy.img"
 g_flappy_end:
