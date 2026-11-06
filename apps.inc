@@ -548,7 +548,7 @@ s_tbanner db 'Type help', 10, 0
 s_help  db 'ls cat write mv rm echo run curl time ver clear shutdown', 10, 0
 s_bad   db 'Unknown', 10, 0
 s_ver   db 'XD OS ', 0
-s_verb  db ' of 32768', 10, 0
+s_verb  db ' of 20992', 10, 0
 s_bytes db ' bytes', 10, 0
 s_nofile db 'No file', 10, 0
 s_noapp db 'No app', 10, 0
